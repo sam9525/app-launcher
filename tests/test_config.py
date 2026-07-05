@@ -5,6 +5,8 @@ import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import config
+import win32con
+import tray
 
 
 def _in_tmp(fn):
@@ -70,9 +72,34 @@ def test_unknown_keys_pass_through():
     _in_tmp(body)
 
 
+def test_parse_hotkey():
+    mods, vk = tray._parse_hotkey("ctrl+alt+l")
+    assert mods == (win32con.MOD_CONTROL | win32con.MOD_ALT)
+    assert vk == ord("L")
+
+    mods, vk = tray._parse_hotkey("shift+win+k")
+    assert mods == (win32con.MOD_SHIFT | win32con.MOD_WIN)
+    assert vk == ord("K")
+
+
+def test_make_icon():
+    icon = tray.make_icon()
+    assert icon.title == "App Launcher"
+    assert icon.name == "AppLauncher"
+
+    # Check menu items exist
+    menu_items = list(icon.menu)
+    assert len(menu_items) == 3
+    assert menu_items[0].text == "Launch"
+    assert menu_items[1].text == "Settings"
+    assert menu_items[2].text == "Exit"
+
+
 if __name__ == "__main__":
     test_round_trip()
     test_missing_file_returns_default()
     test_corrupt_file_backed_up_and_default()
     test_unknown_keys_pass_through()
+    test_parse_hotkey()
+    test_make_icon()
     print("test_config OK")
