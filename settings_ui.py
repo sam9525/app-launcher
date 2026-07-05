@@ -31,6 +31,7 @@ _pil_cache: dict[str, Image.Image] = {}
 
 _BLOCK = 96
 _PAD = 6
+_PANEL_W = 340
 
 
 def _extract_exe_icon(path: str) -> Image.Image | None:
@@ -235,28 +236,16 @@ def _run() -> None:
         config.save(cfg)
         refresh()
 
-    def add():
-        entry = _entry_dialog(root, None)  # Task 4 replaces with the panel
-        if entry:
-            cfg["entries"].append(entry)
-            persist()
-
-    def edit(i):
-        entry = _entry_dialog(root, cfg["entries"][i])
-        if entry:
-            cfg["entries"][i] = entry
-            persist()
-
     def refresh():
         for w in inner.winfo_children():
             w.destroy()
         cols = max(1, canvas.winfo_width() // (_BLOCK + 2 * _PAD))
         grid_cols[0] = cols
         for i, entry in enumerate(cfg["entries"]):
-            block = _make_block(inner, entry, lambda i=i: edit(i))
+            block = _make_block(inner, entry, lambda i=i: load_panel(i))
             block.grid(row=i // cols, column=i % cols, padx=_PAD, pady=_PAD)
         n = len(cfg["entries"])
-        plus = _make_plus_tile(inner, add)
+        plus = _make_plus_tile(inner, lambda: load_panel(None))
         plus.grid(row=n // cols, column=n % cols, padx=_PAD, pady=_PAD)
 
     def on_canvas_resize(event):
@@ -266,50 +255,74 @@ def _run() -> None:
 
     canvas.bind("<Configure>", on_canvas_resize)
 
-    refresh()
-    root.mainloop()
+    # --- details panel (placed off-canvas left; slides in over the grid) ---
+    panel = tk.Frame(host, highlightthickness=1, highlightbackground="#c0c0c0")
+    anim = {"busy": False, "open": False}
+    state = {"index": None}  # index being edited; None = adding new
 
+    def slide(frm, to, done=None):
+        anim["busy"] = True
+        steps = 10
 
-def _entry_dialog(parent: tk.Tk, existing: dict | None) -> dict | None:
-    """Modal add/edit form. Returns the new entry dict, or None on cancel."""
-    e = existing or {}
-    result: dict = {}
+        def tick(i):
+            panel.place_configure(x=int(frm + (to - frm) * i / steps))
+            if i < steps:
+                root.after(15, lambda: tick(i + 1))
+            else:
+                anim["busy"] = False
+                if done:
+                    done()
 
-    dlg = tk.Toplevel(parent)
-    dlg.title("Edit entry" if existing else "Add entry")
-    dlg.grab_set()
-    dlg.resizable(False, False)
+        tick(1)
 
-    kind_var = tk.StringVar(value=e.get("kind", "app"))
-    name_var = tk.StringVar(value=e.get("name", ""))
-    path_var = tk.StringVar(value=e.get("path", ""))
-    args_var = tk.StringVar(value=e.get("args", ""))
-    match_var = tk.StringVar(value=e.get("match_process", ""))
-    workdir_var = tk.StringVar(value=e.get("workdir", ""))
-    cmd_var = tk.StringVar(value=e.get("startup_command", ""))
-    mon_var = tk.StringVar(value=str(e.get("monitor", 1)))
-    zone_var = tk.StringVar(value=e.get("zone", "maximized"))
+    def open_panel():
+        if anim["open"]:
+            return
+        anim["open"] = True
+        panel.place(x=-_PANEL_W, y=0, width=_PANEL_W, relheight=1.0)
+        panel.lift()
+        slide(-_PANEL_W, 0)
 
-    body = ttk.Frame(dlg, padding=10)
+    def close_panel():
+        if not anim["open"] or anim["busy"]:
+            return
+        anim["open"] = False
+        slide(0, -_PANEL_W, done=panel.place_forget)
+
+    header = ttk.Frame(panel, padding=(8, 8, 8, 0))
+    header.pack(fill="x")
+    ttk.Button(header, text="◀ Back", command=close_panel).pack(side="left")
+
+    kind_var = tk.StringVar(value="app")
+    name_var = tk.StringVar()
+    path_var = tk.StringVar()
+    args_var = tk.StringVar()
+    match_var = tk.StringVar()
+    workdir_var = tk.StringVar()
+    cmd_var = tk.StringVar()
+    mon_var = tk.StringVar(value="1")
+    zone_var = tk.StringVar(value="maximized")
+
+    body = ttk.Frame(panel, padding=12)
     body.pack(fill="both", expand=True)
-    body.columnconfigure(1, weight=1, minsize=320)
+    body.columnconfigure(1, weight=1)
 
     def browse_file():
         p = filedialog.askopenfilename(
-            parent=dlg, filetypes=[("Programs", "*.exe"), ("All files", "*.*")]
+            parent=root, filetypes=[("Programs", "*.exe"), ("All files", "*.*")]
         )
         if p:
             path_var.set(p.replace("/", "\\"))
 
     def browse_dir():
-        p = filedialog.askdirectory(parent=dlg)
+        p = filedialog.askdirectory(parent=root)
         if p:
             workdir_var.set(p.replace("/", "\\"))
 
     def add_row(r, label, widget, extra=None):
         lbl = ttk.Label(body, text=label)
-        lbl.grid(row=r, column=0, sticky="w", pady=2, padx=(0, 8))
-        widget.grid(row=r, column=1, sticky="we", pady=2)
+        lbl.grid(row=r, column=0, sticky="w", pady=3, padx=(0, 8))
+        widget.grid(row=r, column=1, sticky="we", pady=3)
         if extra is not None:
             extra.grid(row=r, column=2, padx=(4, 0))
         return [lbl, widget] + ([extra] if extra is not None else [])
@@ -355,7 +368,11 @@ def _entry_dialog(parent: tk.Tk, existing: dict | None) -> dict | None:
         7,
         "Monitor",
         ttk.Spinbox(
-            body, from_=1, to=max(monitor_count, 9), textvariable=mon_var, width=5
+            body,
+            from_=1,
+            to=max(monitor_count, 9),
+            textvariable=mon_var,
+            width=5,
         ),
     )
     add_row(
@@ -373,21 +390,21 @@ def _entry_dialog(parent: tk.Tk, existing: dict | None) -> dict | None:
         for w in terminal_widgets:
             w.grid_remove() if is_app else w.grid()
 
-    update_kind()
-
-    def save():
+    def save_entry():
         name = name_var.get().strip()
         if not name:
-            messagebox.showwarning("App Launcher", "Name is required.", parent=dlg)
+            messagebox.showwarning("App Launcher", "Name is required.", parent=root)
             return
         try:
             monitor = max(1, int(mon_var.get()))
         except ValueError:
             monitor = 1
+        i = state["index"]
+        old = cfg["entries"][i] if i is not None else {}
         kind = kind_var.get()
         entry = {
             "name": name,
-            "enabled": e.get("enabled", True),
+            "enabled": old.get("enabled", True),
             "kind": kind,
             "monitor": monitor,
             "zone": zone_var.get(),
@@ -405,18 +422,58 @@ def _entry_dialog(parent: tk.Tk, existing: dict | None) -> dict | None:
         # warn but allow: the launcher already handles dead paths gracefully
         if check_path and not os.path.exists(check_path):
             if not messagebox.askyesno(
-                "App Launcher", f"{check_path} does not exist. Save anyway?", parent=dlg
+                "App Launcher",
+                f"{check_path} does not exist. Save anyway?",
+                parent=root,
             ):
                 return
-        result.update(entry)
-        dlg.destroy()
+        if i is None:
+            cfg["entries"].append(entry)
+        else:
+            cfg["entries"][i] = entry
+        persist()
+        close_panel()
 
-    footer = ttk.Frame(dlg, padding=(10, 0, 10, 10))
-    footer.pack(fill="x")
-    ttk.Button(footer, text="Save", command=save).pack(side="right")
-    ttk.Button(footer, text="Cancel", command=dlg.destroy).pack(
-        side="right", padx=(0, 6)
-    )
+    def remove_entry():
+        del cfg["entries"][state["index"]]
+        persist()
+        close_panel()
 
-    dlg.wait_window()
-    return result or None
+    def toggle_entry():
+        e = cfg["entries"][state["index"]]
+        e["enabled"] = not e.get("enabled", True)
+        persist()
+        close_panel()
+
+    btns = ttk.Frame(body)
+    btns.grid(row=9, column=0, columnspan=3, sticky="we", pady=(12, 0))
+    save_btn = ttk.Button(btns, text="Save", command=save_entry)
+    toggle_btn = ttk.Button(btns, text="Disable", command=toggle_entry)
+    remove_btn = ttk.Button(btns, text="Remove", command=remove_entry)
+    save_btn.pack(side="left")
+
+    def load_panel(i):
+        if anim["busy"]:
+            return
+        state["index"] = i
+        e = cfg["entries"][i] if i is not None else {}
+        kind_var.set(e.get("kind", "app"))
+        name_var.set(e.get("name", ""))
+        path_var.set(e.get("path", ""))
+        args_var.set(e.get("args", ""))
+        match_var.set(e.get("match_process", ""))
+        workdir_var.set(e.get("workdir", ""))
+        cmd_var.set(e.get("startup_command", ""))
+        mon_var.set(str(e.get("monitor", 1)))
+        zone_var.set(e.get("zone", "maximized"))
+        update_kind()
+        toggle_btn.pack_forget()
+        remove_btn.pack_forget()
+        if i is not None:
+            toggle_btn.configure(text="Disable" if e.get("enabled", True) else "Enable")
+            toggle_btn.pack(side="left", padx=6)
+            remove_btn.pack(side="left")
+        open_panel()
+
+    refresh()
+    root.mainloop()
