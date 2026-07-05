@@ -72,13 +72,14 @@ def _extract_exe_icon(path: str) -> Image.Image | None:
         win32gui.DestroyIcon(hicon)
 
 
-def _letter_tile(name: str, size: int) -> Image.Image:
+def _letter_tile(name: str | None, size: int) -> Image.Image:
     """Flat colored square with the entry's first letter; color is a stable
     hash of the name so tiles don't change between refreshes."""
-    hue = (zlib.crc32(name.encode("utf-8")) % 360) / 360
+    name_str = str(name or "")
+    hue = (zlib.crc32(name_str.encode("utf-8")) % 360) / 360
     r, g, b = (int(c * 255) for c in colorsys.hsv_to_rgb(hue, 0.45, 0.62))
     img = Image.new("RGBA", (size, size), (r, g, b, 255))
-    letter = (name.strip()[:1] or "?").upper()
+    letter = (name_str.strip()[:1] or "?").upper()
     draw = ImageDraw.Draw(img)
     try:
         font = ImageFont.truetype("segoeui.ttf", size // 2)
@@ -103,7 +104,8 @@ def _icon_image(entry: dict, dimmed: bool = False) -> ImageTk.PhotoImage:
         if entry.get("kind") == "terminal"
         else entry.get("path", "")
     ) or ""
-    base_key = src or "letter:" + entry.get("name", "")
+    name = str(entry.get("name") or "")
+    base_key = src or "letter:" + name
     key = (base_key, dimmed)
     if key in _photo_cache:
         return _photo_cache[key]
@@ -111,7 +113,7 @@ def _icon_image(entry: dict, dimmed: bool = False) -> ImageTk.PhotoImage:
     if pil is None:
         pil = _extract_exe_icon(src)
         if pil is None:
-            pil = _letter_tile(entry.get("name", ""), _ICON_SIZE)
+            pil = _letter_tile(name, _ICON_SIZE)
         pil = pil.resize((_ICON_SIZE, _ICON_SIZE), Image.LANCZOS)
         _pil_cache[base_key] = pil
     if dimmed:
@@ -138,6 +140,7 @@ def open_settings() -> None:
 
 def _run() -> None:
     global _root
+    _photo_cache.clear()
     root = tk.Tk()
     _root = root
     root.title("App Launcher — Settings")
