@@ -1,12 +1,14 @@
 import pathlib
 import sys
 import tempfile
+import unittest.mock as mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import config
 import win32con
 import tray
+import settings_ui
 
 
 def _in_tmp(fn):
@@ -95,6 +97,26 @@ def test_make_icon():
     assert menu_items[2].text == "Exit"
 
 
+def test_open_settings_starts_thread():
+    with mock.patch("threading.Thread") as mock_thread:
+        settings_ui._ui_thread = None
+        settings_ui.open_settings()
+        mock_thread.assert_called_once_with(target=settings_ui._run, daemon=True)
+        mock_thread.return_value.start.assert_called_once()
+
+
+def test_open_settings_lifts_existing_window():
+    mock_thread = mock.Mock()
+    mock_thread.is_alive.return_value = True
+    settings_ui._ui_thread = mock_thread
+
+    mock_root = mock.Mock()
+    settings_ui._root = mock_root
+
+    settings_ui.open_settings()
+    mock_root.event_generate.assert_called_once_with("<<Lift>>", when="tail")
+
+
 if __name__ == "__main__":
     test_round_trip()
     test_missing_file_returns_default()
@@ -102,4 +124,6 @@ if __name__ == "__main__":
     test_unknown_keys_pass_through()
     test_parse_hotkey()
     test_make_icon()
+    test_open_settings_starts_thread()
+    test_open_settings_lifts_existing_window()
     print("test_config OK")
