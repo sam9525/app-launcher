@@ -29,6 +29,9 @@ _ICON_SIZE = 48
 _photo_cache: dict[tuple[str, bool], ImageTk.PhotoImage] = {}
 _pil_cache: dict[str, Image.Image] = {}
 
+_BLOCK = 96
+_PAD = 6
+
 
 def _extract_exe_icon(path: str) -> Image.Image | None:
     """First icon of an .exe as RGBA, or None if it can't be extracted."""
@@ -125,6 +128,55 @@ def _icon_image(entry: dict, dimmed: bool = False) -> ImageTk.PhotoImage:
     return photo
 
 
+def _make_block(parent: tk.Widget, entry: dict, command) -> tk.Frame:
+    enabled = entry.get("enabled", True)
+    f = tk.Frame(
+        parent,
+        width=_BLOCK,
+        height=_BLOCK,
+        cursor="hand2",
+        highlightthickness=1,
+        highlightbackground="#dcdcdc",
+    )
+    f.pack_propagate(False)
+    icon = tk.Label(f, image=_icon_image(entry, dimmed=not enabled))
+    name = entry.get("name", "")
+    if len(name) > 12:
+        name = name[:11] + "…"
+    label = tk.Label(
+        f,
+        text=name,
+        font=("Segoe UI", 9),
+        fg="#404040" if enabled else "#a0a0a0",
+    )
+    icon.pack(pady=(12, 2))
+    label.pack()
+
+    def on_enter(_e):
+        f.configure(highlightbackground="#4a90d9")
+
+    def on_leave(_e):
+        f.configure(highlightbackground="#dcdcdc")
+
+    for w in (f, icon, label):
+        w.bind("<Button-1>", lambda _e: command())
+        w.bind("<Enter>", on_enter)
+        w.bind("<Leave>", on_leave)
+    return f
+
+
+def _make_plus_tile(parent: tk.Widget, command) -> tk.Canvas:
+    c = tk.Canvas(
+        parent, width=_BLOCK, height=_BLOCK, highlightthickness=0, cursor="hand2"
+    )
+    c.create_rectangle(5, 5, _BLOCK - 5, _BLOCK - 5, dash=(3, 2), outline="#a0a0a0")
+    c.create_text(
+        _BLOCK / 2, _BLOCK / 2, text="+", font=("Segoe UI", 24), fill="#a0a0a0"
+    )
+    c.bind("<Button-1>", lambda _e: command())
+    return c
+
+
 def open_settings() -> None:
     global _ui_thread
     if _ui_thread and _ui_thread.is_alive():
@@ -140,91 +192,79 @@ def open_settings() -> None:
 
 def _run() -> None:
     global _root
-    _photo_cache.clear()
     root = tk.Tk()
     _root = root
     root.title("App Launcher — Settings")
-    root.geometry("680x380")
+    root.geometry("720x480")
+    root.minsize(480, 320)
     root.bind("<<Lift>>", lambda e: (root.deiconify(), root.lift(), root.focus_force()))
+    _photo_cache.clear()  # PhotoImages died with any previous Tk root
 
     cfg = config.load()
     cfg.setdefault("hotkey", config.DEFAULT_HOTKEY)
     cfg.setdefault("entries", [])
 
-    columns = ("name", "kind", "monitor", "zone", "enabled")
-    tree = ttk.Treeview(root, columns=columns, show="headings", selectmode="browse")
-    for col, width in zip(columns, (250, 80, 70, 110, 70)):
-        tree.heading(col, text=col.capitalize())
-        tree.column(col, width=width, anchor="w")
-    tree.pack(fill="both", expand=True, padx=8, pady=8)
+    def launch_now():
+        threading.Thread(target=launcher.launch_all, daemon=True).start()
 
-    def refresh():
-        tree.delete(*tree.get_children())
-        for i, e in enumerate(cfg["entries"]):
-            tree.insert(
-                "",
-                "end",
-                iid=str(i),
-                values=(
-                    e.get("name", ""),
-                    e.get("kind", ""),
-                    e.get("monitor", 1),
-                    e.get("zone", ""),
-                    "yes" if e.get("enabled", True) else "no",
-                ),
-            )
+    top = ttk.Frame(root, padding=(10, 8))
+    top.pack(fill="x")
+    ttk.Label(top, text="App Launcher", font=("Segoe UI", 12, "bold")).pack(side="left")
+    ttk.Button(top, text="Launch Now", command=launch_now).pack(side="right")
 
-    def selected_index():
-        sel = tree.selection()
-        return int(sel[0]) if sel else None
+    host = tk.Frame(root)  # grid viewport now, panel overlay target in Task 4
+    host.pack(fill="both", expand=True)
+
+    canvas = tk.Canvas(host, highlightthickness=0)
+    vsb = ttk.Scrollbar(host, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=vsb.set)
+    vsb.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+    inner = tk.Frame(canvas)
+    inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+    inner.bind(
+        "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+    canvas.bind_all(
+        "<MouseWheel>", lambda e: canvas.yview_scroll(-e.delta // 120, "units")
+    )
+
+    grid_cols = [0]  # current column count; reflow only when it changes
 
     def persist():
-        config.save(cfg)  # every mutation writes immediately — no Apply button
+        config.save(cfg)
         refresh()
 
     def add():
-        entry = _entry_dialog(root, None)
+        entry = _entry_dialog(root, None)  # Task 4 replaces with the panel
         if entry:
             cfg["entries"].append(entry)
             persist()
 
-    def edit():
-        i = selected_index()
-        if i is None:
-            return
+    def edit(i):
         entry = _entry_dialog(root, cfg["entries"][i])
         if entry:
             cfg["entries"][i] = entry
             persist()
 
-    def remove():
-        i = selected_index()
-        if i is None:
-            return
-        del cfg["entries"][i]
-        persist()
+    def refresh():
+        for w in inner.winfo_children():
+            w.destroy()
+        cols = max(1, canvas.winfo_width() // (_BLOCK + 2 * _PAD))
+        grid_cols[0] = cols
+        for i, entry in enumerate(cfg["entries"]):
+            block = _make_block(inner, entry, lambda i=i: edit(i))
+            block.grid(row=i // cols, column=i % cols, padx=_PAD, pady=_PAD)
+        n = len(cfg["entries"])
+        plus = _make_plus_tile(inner, add)
+        plus.grid(row=n // cols, column=n % cols, padx=_PAD, pady=_PAD)
 
-    def toggle():
-        i = selected_index()
-        if i is None:
-            return
-        cfg["entries"][i]["enabled"] = not cfg["entries"][i].get("enabled", True)
-        persist()
+    def on_canvas_resize(event):
+        canvas.itemconfigure(inner_id, width=event.width)
+        if max(1, event.width // (_BLOCK + 2 * _PAD)) != grid_cols[0]:
+            refresh()
 
-    def launch_now():
-        threading.Thread(target=launcher.launch_all, daemon=True).start()
-
-    buttons = ttk.Frame(root)
-    buttons.pack(fill="x", padx=8, pady=(0, 8))
-    for text, command in (
-        ("Add", add),
-        ("Edit", edit),
-        ("Remove", remove),
-        ("✓ Enable/Disable", toggle),
-        ("Launch Now", launch_now),
-        ("Close", root.destroy),
-    ):
-        ttk.Button(buttons, text=text, command=command).pack(side="left", padx=2)
+    canvas.bind("<Configure>", on_canvas_resize)
 
     refresh()
     root.mainloop()
