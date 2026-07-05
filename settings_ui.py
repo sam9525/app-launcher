@@ -47,9 +47,13 @@ def _extract_exe_icon(path: str) -> Image.Image | None:
     if not large:
         return None
     hicon = large[0]
+    hdc_handle = None
+    memdc = None
+    bmp = None
     try:
         size = win32api.GetSystemMetrics(win32con.SM_CXICON)
-        hdc = win32ui.CreateDCFromHandle(win32gui.GetDC(0))
+        hdc_handle = win32gui.GetDC(0)
+        hdc = win32ui.CreateDCFromHandle(hdc_handle)
         bmp = win32ui.CreateBitmap()
         bmp.CreateCompatibleBitmap(hdc, size, size)
         memdc = hdc.CreateCompatibleDC()
@@ -65,14 +69,27 @@ def _extract_exe_icon(path: str) -> Image.Image | None:
             0,
             1,
         )
-        # ponytail: leaks one small GDI bitmap per distinct exe — bounded by
-        # the icon cache, not worth the handle bookkeeping
         if not img.getchannel("A").getbbox():
             img.putalpha(255)  # DrawIcon leaves alpha=0 for alpha-less icons
         return img
     except Exception:
         return None
     finally:
+        if memdc:
+            try:
+                memdc.DeleteDC()
+            except Exception:
+                pass
+        if bmp:
+            try:
+                win32gui.DeleteObject(bmp.GetHandle())
+            except Exception:
+                pass
+        if hdc_handle:
+            try:
+                win32gui.ReleaseDC(0, hdc_handle)
+            except Exception:
+                pass
         win32gui.DestroyIcon(hicon)
 
 
@@ -157,12 +174,18 @@ def _make_block(parent: tk.Widget, entry: dict, command) -> tk.Frame:
         f.configure(highlightbackground="#4a90d9")
 
     def on_leave(_e):
-        f.configure(highlightbackground="#dcdcdc")
+        x, y = f.winfo_pointerxy()
+        fx = f.winfo_rootx()
+        fy = f.winfo_rooty()
+        fw = f.winfo_width()
+        fh = f.winfo_height()
+        if not (fx <= x < fx + fw and fy <= y < fy + fh):
+            f.configure(highlightbackground="#dcdcdc")
 
+    f.bind("<Enter>", on_enter)
+    f.bind("<Leave>", on_leave)
     for w in (f, icon, label):
         w.bind("<Button-1>", lambda _e: command())
-        w.bind("<Enter>", on_enter)
-        w.bind("<Leave>", on_leave)
     return f
 
 
@@ -226,9 +249,12 @@ def _run() -> None:
     inner.bind(
         "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
     )
-    canvas.bind_all(
-        "<MouseWheel>", lambda e: canvas.yview_scroll(-e.delta // 120, "units")
-    )
+
+    def _on_mousewheel(e):
+        canvas.yview_scroll(-e.delta // 120, "units")
+
+    canvas.bind("<Enter>", lambda _: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+    canvas.bind("<Leave>", lambda _: canvas.unbind_all("<MouseWheel>"))
 
     grid_cols = [0]  # current column count; reflow only when it changes
 
@@ -391,6 +417,8 @@ def _run() -> None:
             w.grid_remove() if is_app else w.grid()
 
     def save_entry():
+        if anim["busy"]:
+            return
         name = name_var.get().strip()
         if not name:
             messagebox.showwarning("App Launcher", "Name is required.", parent=root)
@@ -435,11 +463,15 @@ def _run() -> None:
         close_panel()
 
     def remove_entry():
+        if anim["busy"]:
+            return
         del cfg["entries"][state["index"]]
         persist()
         close_panel()
 
     def toggle_entry():
+        if anim["busy"]:
+            return
         e = cfg["entries"][state["index"]]
         e["enabled"] = not e.get("enabled", True)
         persist()
