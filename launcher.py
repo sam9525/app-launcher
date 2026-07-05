@@ -184,5 +184,4 @@ def _send_startup_command(hwnd: int, command: str) -> bool:
     return False  # never type into the wrong window
 
 
-if __name__ == "__main__":  # temporary manual-run hook, removed in the settings_ui task
-    print(launch_all())
+
