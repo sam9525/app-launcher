@@ -33,12 +33,20 @@ def _open_settings(icon, item=None):
         icon.notify("Settings UI not built yet")
 
 
+def _on_exit(icon, item=None):
+    try:
+        win32gui.UnregisterHotKey(None, HOTKEY_ID)
+    except Exception:
+        pass
+    icon.stop()
+
+
 def make_icon() -> pystray.Icon:
     image = Image.new("RGB", (16, 16), (45, 125, 210))  # solid square, no asset to maintain
     menu = pystray.Menu(
         pystray.MenuItem("Launch", _launch_async, default=True),
         pystray.MenuItem("Settings", _open_settings),
-        pystray.MenuItem("Exit", lambda icon, item=None: icon.stop()),
+        pystray.MenuItem("Exit", _on_exit),
     )
     return pystray.Icon("AppLauncher", image, "App Launcher", menu)
 

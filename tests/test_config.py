@@ -117,6 +117,93 @@ def test_open_settings_lifts_existing_window():
     mock_root.event_generate.assert_called_once_with("<<Lift>>", when="tail")
 
 
+def test_tray_on_exit():
+    mock_icon = mock.Mock()
+    with mock.patch("win32gui.UnregisterHotKey") as mock_unregister:
+        tray._on_exit(mock_icon)
+        mock_unregister.assert_called_once_with(None, tray.HOTKEY_ID)
+        mock_icon.stop.assert_called_once()
+
+
+def test_send_startup_command_com_init_uninit():
+    hwnd = 12345
+    with mock.patch("win32gui.GetForegroundWindow", return_value=hwnd), \
+         mock.patch("win32gui.SetForegroundWindow") as mock_set_foreground, \
+         mock.patch("pythoncom.CoInitialize") as mock_co_init, \
+         mock.patch("pythoncom.CoUninitialize") as mock_co_uninit, \
+         mock.patch("win32com.client.Dispatch") as mock_dispatch, \
+         mock.patch("time.sleep") as mock_sleep:
+        
+        import launcher
+        # Mock Dispatch object to allow SendKeys call
+        mock_shell = mock.Mock()
+        mock_dispatch.return_value = mock_shell
+        
+        res = launcher._send_startup_command(hwnd, "test_cmd")
+        
+        assert res is True
+        mock_co_init.assert_called_once()
+        mock_co_uninit.assert_called_once()
+        mock_dispatch.assert_called_once_with("WScript.Shell")
+        mock_shell.SendKeys.assert_called_once()
+
+
+def test_send_startup_command_com_uninit_on_error():
+    hwnd = 12345
+    with mock.patch("win32gui.GetForegroundWindow", return_value=hwnd), \
+         mock.patch("win32gui.SetForegroundWindow"), \
+         mock.patch("pythoncom.CoInitialize") as mock_co_init, \
+         mock.patch("pythoncom.CoUninitialize") as mock_co_uninit, \
+         mock.patch("win32com.client.Dispatch", side_effect=RuntimeError("COM error")), \
+         mock.patch("time.sleep"):
+        
+        import launcher
+        try:
+            launcher._send_startup_command(hwnd, "test_cmd")
+        except RuntimeError:
+            pass
+        
+        mock_co_init.assert_called_once()
+        mock_co_uninit.assert_called_once()
+
+
+def test_position_maximized_restore():
+    hwnd = 12345
+    with mock.patch("monitors.get_monitors", return_value=[(0, 0, 1920, 1080)]), \
+         mock.patch("monitors.zone_rect", return_value=(0, 0, 1920, 1080)), \
+         mock.patch("win32gui.IsIconic", return_value=False), \
+         mock.patch("win32gui.GetWindowPlacement") as mock_get_placement, \
+         mock.patch("win32gui.ShowWindow") as mock_show_window, \
+         mock.patch("win32gui.SetWindowPos") as mock_set_window_pos:
+        
+        import launcher
+        import win32con
+        
+        # Case 1: Window is already maximized (SW_SHOWMAXIMIZED)
+        mock_get_placement.return_value = (0, win32con.SW_SHOWMAXIMIZED, (0,0), (0,0), (0,0,100,100))
+        
+        launcher._position(hwnd, 1, "maximized")
+        
+        # Verify SW_RESTORE was called, then SetWindowPos, then SW_MAXIMIZE
+        mock_show_window.assert_any_call(hwnd, win32con.SW_RESTORE)
+        mock_show_window.assert_any_call(hwnd, win32con.SW_MAXIMIZE)
+        mock_set_window_pos.assert_called_once()
+        
+        mock_show_window.reset_mock()
+        mock_set_window_pos.reset_mock()
+        
+        # Case 2: Window is not maximized (SW_SHOWNORMAL)
+        mock_get_placement.return_value = (0, win32con.SW_SHOWNORMAL, (0,0), (0,0), (0,0,100,100))
+        
+        launcher._position(hwnd, 1, "maximized")
+        
+        # SW_RESTORE should not be called, only SW_MAXIMIZE
+        restore_calls = [call for call in mock_show_window.call_args_list if call[0][1] == win32con.SW_RESTORE]
+        assert len(restore_calls) == 0
+        mock_show_window.assert_any_call(hwnd, win32con.SW_MAXIMIZE)
+        mock_set_window_pos.assert_called_once()
+
+
 if __name__ == "__main__":
     test_round_trip()
     test_missing_file_returns_default()
@@ -126,4 +213,8 @@ if __name__ == "__main__":
     test_make_icon()
     test_open_settings_starts_thread()
     test_open_settings_lifts_existing_window()
+    test_tray_on_exit()
+    test_send_startup_command_com_init_uninit()
+    test_send_startup_command_com_uninit_on_error()
+    test_position_maximized_restore()
     print("test_config OK")

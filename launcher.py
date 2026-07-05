@@ -111,13 +111,13 @@ def _windows_for(process_name: str, pid_names: dict) -> list[int]:
     found: list[int] = []
 
     def callback(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowTextLength(hwnd) > 0:
-            try:
+        try:
+            if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowTextLength(hwnd) > 0:
                 _tid, pid = win32process.GetWindowThreadProcessId(hwnd)
                 if _process_basename(pid, pid_names) == target:
                     found.append(hwnd)
-            except Exception:
-                pass
+        except Exception:
+            pass
         return True
 
     win32api.SetLastError(0)
@@ -151,6 +151,9 @@ def _position(hwnd: int, monitor_index: int, zone: str) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     x, y, w, h = monitors.zone_rect(mon, zone)
     if zone == "maximized":
+        placement = win32gui.GetWindowPlacement(hwnd)
+        if placement[1] == win32con.SW_SHOWMAXIMIZED:
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         # move onto the target monitor first: a window maximizes onto whichever
         # monitor it is on
         win32gui.SetWindowPos(hwnd, 0, x, y, w, h,
@@ -177,9 +180,12 @@ def _send_startup_command(hwnd: int, command: str) -> bool:
             pass  # Windows foreground-lock can refuse; retry
         if win32gui.GetForegroundWindow() == hwnd:
             pythoncom.CoInitialize()  # launch_all runs on worker threads
-            shell = win32com.client.Dispatch("WScript.Shell")
-            shell.SendKeys(_sendkeys_escape(command) + "{ENTER}")
-            return True
+            try:
+                shell = win32com.client.Dispatch("WScript.Shell")
+                shell.SendKeys(_sendkeys_escape(command) + "{ENTER}")
+                return True
+            finally:
+                pythoncom.CoUninitialize()
         time.sleep(FOREGROUND_RETRY_DELAY)
     return False  # never type into the wrong window
 
