@@ -50,6 +50,7 @@ def _extract_exe_icon(path: str) -> Image.Image | None:
     hdc_handle = None
     memdc = None
     bmp = None
+    old_bmp = None
     try:
         size = win32api.GetSystemMetrics(win32con.SM_CXICON)
         hdc_handle = win32gui.GetDC(0)
@@ -57,7 +58,7 @@ def _extract_exe_icon(path: str) -> Image.Image | None:
         bmp = win32ui.CreateBitmap()
         bmp.CreateCompatibleBitmap(hdc, size, size)
         memdc = hdc.CreateCompatibleDC()
-        memdc.SelectObject(bmp)
+        old_bmp = memdc.SelectObject(bmp)
         memdc.DrawIcon((0, 0), hicon)
         info = bmp.GetInfo()
         img = Image.frombuffer(
@@ -75,6 +76,11 @@ def _extract_exe_icon(path: str) -> Image.Image | None:
     except Exception:
         return None
     finally:
+        if memdc and old_bmp:
+            try:
+                memdc.SelectObject(old_bmp)
+            except Exception:
+                pass
         if memdc:
             try:
                 memdc.DeleteDC()
@@ -158,7 +164,7 @@ def _make_block(parent: tk.Widget, entry: dict, command) -> tk.Frame:
     )
     f.pack_propagate(False)
     icon = tk.Label(f, image=_icon_image(entry, dimmed=not enabled))
-    name = entry.get("name", "")
+    name = entry.get("name") or ""
     if len(name) > 12:
         name = name[:11] + "…"
     label = tk.Label(
@@ -251,10 +257,20 @@ def _run() -> None:
     )
 
     def _on_mousewheel(e):
-        canvas.yview_scroll(-e.delta // 120, "units")
+        units = -2 if e.delta > 0 else 2
+        canvas.yview_scroll(units, "units")
+
+    def _on_canvas_leave(_e):
+        x, y = canvas.winfo_pointerxy()
+        cx = canvas.winfo_rootx()
+        cy = canvas.winfo_rooty()
+        cw = canvas.winfo_width()
+        ch = canvas.winfo_height()
+        if not (cx <= x < cx + cw and cy <= y < cy + ch):
+            canvas.unbind_all("<MouseWheel>")
 
     canvas.bind("<Enter>", lambda _: canvas.bind_all("<MouseWheel>", _on_mousewheel))
-    canvas.bind("<Leave>", lambda _: canvas.unbind_all("<MouseWheel>"))
+    canvas.bind("<Leave>", _on_canvas_leave)
 
     grid_cols = [0]  # current column count; reflow only when it changes
 
@@ -291,6 +307,8 @@ def _run() -> None:
         steps = 10
 
         def tick(i):
+            if not root.winfo_exists() or not panel.winfo_exists():
+                return
             panel.place_configure(x=int(frm + (to - frm) * i / steps))
             if i < steps:
                 root.after(15, lambda: tick(i + 1))
@@ -304,6 +322,9 @@ def _run() -> None:
     def open_panel():
         if anim["open"]:
             return
+        for child in inner.winfo_children():
+            if isinstance(child, tk.Frame):
+                child.configure(highlightbackground="#dcdcdc")
         anim["open"] = True
         panel.place(x=-_PANEL_W, y=0, width=_PANEL_W, relheight=1.0)
         panel.lift()
@@ -463,6 +484,8 @@ def _run() -> None:
         close_panel()
 
     def remove_entry():
+        if state["index"] is None:
+            return
         if anim["busy"]:
             return
         del cfg["entries"][state["index"]]
@@ -470,6 +493,8 @@ def _run() -> None:
         close_panel()
 
     def toggle_entry():
+        if state["index"] is None:
+            return
         if anim["busy"]:
             return
         e = cfg["entries"][state["index"]]
@@ -509,3 +534,4 @@ def _run() -> None:
 
     refresh()
     root.mainloop()
+    _root = None
