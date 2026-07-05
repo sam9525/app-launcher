@@ -167,6 +167,27 @@ def test_send_startup_command_com_uninit_on_error():
         mock_co_uninit.assert_called_once()
 
 
+def test_terminal_launched_once_then_skipped():
+    import launcher
+    entry = {"name": "Claude", "kind": "terminal", "workdir": "D:\\proj",
+             "startup_command": "", "monitor": 1, "zone": "maximized"}
+    launcher._launched_terminals.clear()
+    with mock.patch("launcher._windows_for", return_value=[]), \
+         mock.patch("launcher._spawn") as mock_spawn, \
+         mock.patch("launcher._poll_new_window", return_value=999), \
+         mock.patch("launcher._position") as mock_position:
+        # First press: spawns, positions, marks.
+        assert launcher._handle_entry(entry, {}) is None
+        assert mock_spawn.call_count == 1
+        assert mock_position.call_count == 1
+        assert launcher._terminal_key(entry) in launcher._launched_terminals
+        # Second press: skipped entirely, no respawn, no reposition.
+        assert launcher._handle_entry(entry, {}) is None
+        assert mock_spawn.call_count == 1
+        assert mock_position.call_count == 1
+    launcher._launched_terminals.clear()
+
+
 def test_position_maximized_restore():
     hwnd = 12345
     with mock.patch("monitors.get_monitors", return_value=[(0, 0, 1920, 1080)]), \
@@ -216,5 +237,6 @@ if __name__ == "__main__":
     test_tray_on_exit()
     test_send_startup_command_com_init_uninit()
     test_send_startup_command_com_uninit_on_error()
+    test_terminal_launched_once_then_skipped()
     test_position_maximized_restore()
     print("test_config OK")

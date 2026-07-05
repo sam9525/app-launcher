@@ -24,6 +24,15 @@ TERMINAL_PROCESS = "windowsterminal.exe"
 # ponytail: global lock; fine for a single user mashing one hotkey
 _run_lock = threading.Lock()
 
+# Terminals are launched once per app run, then left alone. Keyed by
+# (name, workdir); cleared only by restarting the launcher.
+# ponytail: in-memory set, no persistence — a fresh run reopens terminals
+_launched_terminals: set = set()
+
+
+def _terminal_key(entry: dict) -> tuple:
+    return (entry.get("name"), entry.get("workdir"))
+
 
 def launch_all() -> str:
     if not _run_lock.acquire(blocking=False):
@@ -55,32 +64,41 @@ def launch_all() -> str:
 
 def _handle_entry(entry: dict, pid_names: dict) -> str | None:
     """Returns None on full success, else a short problem note for the summary."""
-    if entry.get("kind") == "terminal":
-        proc_name = TERMINAL_PROCESS
-    else:
-        proc_name = entry["match_process"]
     monitor = entry.get("monitor", 1)
     zone = entry.get("zone", "maximized")
 
+    if entry.get("kind") == "terminal":
+        # Launch once per run; a marked terminal is skipped entirely (no
+        # respawn, no reposition) so repeat presses don't pile up windows or
+        # hijack another project's terminal. Never _find_window here — all
+        # terminals share one process, so a "find" always hits the wrong one.
+        key = _terminal_key(entry)
+        if key in _launched_terminals:
+            return None
+        before = set(_windows_for(TERMINAL_PROCESS, pid_names))
+        _spawn(entry)
+        hwnd = _poll_new_window(TERMINAL_PROCESS, before, pid_names)
+        if hwnd is None:
+            return "unpositioned (no window within 15 s)"
+        _position(hwnd, monitor, zone)
+        _launched_terminals.add(key)  # mark only after it actually opened
+        command = entry.get("startup_command", "")
+        if command and not _send_startup_command(hwnd, command):
+            return "opened, command not sent"
+        return None
+
+    # Regular apps: find-or-launch by process basename, reposition every press.
+    proc_name = entry["match_process"]
     hwnd = _find_window(proc_name, pid_names)
     if hwnd:
         _position(hwnd, monitor, zone)
         return None
-
-    # Snapshot HWNDs before spawning; poll for a NEW one. Never poll by spawned
-    # PID: wt.exe hands off to a WindowsTerminal.exe broker and exits, and apps
-    # like Code.exe parent their window to a child process.
     before = set(_windows_for(proc_name, pid_names))
     _spawn(entry)
     hwnd = _poll_new_window(proc_name, before, pid_names)
     if hwnd is None:
         return "unpositioned (no window within 15 s)"
     _position(hwnd, monitor, zone)
-
-    command = entry.get("startup_command", "")
-    if entry.get("kind") == "terminal" and command:
-        if not _send_startup_command(hwnd, command):
-            return "opened, command not sent"
     return None
 
 
