@@ -243,6 +243,22 @@ def test_position_half_inflates_for_border():
             win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
 
 
+def test_position_open_only_is_noop():
+    hwnd = 12345
+    with mock.patch("monitors.get_monitors") as mock_get_mons, \
+         mock.patch("win32gui.SetWindowPos") as mock_set_pos, \
+         mock.patch("win32gui.ShowWindow") as mock_show:
+        import launcher
+        launcher._position(hwnd, 1, "open-only")
+        mock_get_mons.assert_not_called()
+        mock_set_pos.assert_not_called()
+        mock_show.assert_not_called()
+
+
+def test_open_only_in_zones():
+    assert "open-only" in config.ZONES
+
+
 if __name__ == "__main__":
     test_round_trip()
     test_missing_file_returns_default()
@@ -258,4 +274,6 @@ if __name__ == "__main__":
     test_terminal_launched_once_then_skipped()
     test_position_maximized_restore()
     test_position_half_inflates_for_border()
+    test_position_open_only_is_noop()
+    test_open_only_in_zones()
     print("test_config OK")

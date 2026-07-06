@@ -7,7 +7,7 @@ CONFIG_PATH = Path(os.environ["APPDATA"]) / "AppLauncher" / "config.json"
 DEFAULT_HOTKEY = "ctrl+alt+l"
 ZONES = [
     "maximized", "left-half", "right-half", "top-half", "bottom-half",
-    "top-left", "top-right", "bottom-left", "bottom-right",
+    "top-left", "top-right", "bottom-left", "bottom-right", "open-only",
 ]
 
 

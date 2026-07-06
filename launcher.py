@@ -191,6 +191,8 @@ def _frame_margins(hwnd: int) -> tuple[int, int, int, int]:
 
 
 def _position(hwnd: int, monitor_index: int, zone: str) -> None:
+    if zone == "open-only":
+        return  # find/launch only — leave the window where it opened
     mons = monitors.get_monitors()
     # clamp out-of-range monitor index to primary rather than fail
     mon = mons[monitor_index - 1] if 1 <= monitor_index <= len(mons) else mons[0]
