@@ -7,6 +7,7 @@ import os
 import shutil
 import threading
 import tkinter as tk
+import winreg
 import zlib
 from tkinter import filedialog, messagebox
 
@@ -35,8 +36,40 @@ _BLOCK = 96
 _PAD = 6
 _PANEL_W = 340
 
-_ACCENT = "#4a90d9"
+_ACCENT = "#4a90d9"  # fallback; replaced at runtime by the Windows accent color
 _TILE_BORDER = ("gray75", "gray30")  # (light, dark) default tile border
+
+
+def _system_accent() -> str:
+    """Windows accent color as #RRGGBB (DWM AccentColor is 0xAABBGGRR)."""
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM"
+        ) as k:
+            val, _ = winreg.QueryValueEx(k, "AccentColor")
+        return f"#{val & 0xFF:02x}{(val >> 8) & 0xFF:02x}{(val >> 16) & 0xFF:02x}"
+    except OSError:
+        return _ACCENT
+
+
+def _shade(hex_color: str, factor: float) -> str:
+    r, g, b = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
+    r, g, b = (max(0, min(255, int(c * factor))) for c in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _apply_accent(accent: str) -> None:
+    """Point CTk's shared theme at the system accent for the widgets in use."""
+    hover = _shade(accent, 0.85)
+    t = ctk.ThemeManager.theme
+    t["CTkButton"]["fg_color"] = [accent, accent]
+    t["CTkButton"]["hover_color"] = [hover, hover]
+    t["CTkOptionMenu"]["fg_color"] = [accent, accent]
+    t["CTkOptionMenu"]["button_color"] = [hover, hover]
+    t["CTkOptionMenu"]["button_hover_color"] = [_shade(accent, 0.7)] * 2
+    t["CTkSwitch"]["progress_color"] = [accent, accent]
+    t["CTkSegmentedButton"]["selected_color"] = [accent, accent]
+    t["CTkSegmentedButton"]["selected_hover_color"] = [hover, hover]
 
 
 def _extract_exe_icon(path: str) -> Image.Image | None:
@@ -159,8 +192,12 @@ def _icon_image(entry: dict, dimmed: bool = False) -> ctk.CTkImage:
 def _make_block(parent, entry: dict, command) -> ctk.CTkFrame:
     enabled = entry.get("enabled", True)
     f = ctk.CTkFrame(
-        parent, width=_BLOCK, height=_BLOCK,
-        corner_radius=8, border_width=1, border_color=_TILE_BORDER,
+        parent,
+        width=_BLOCK,
+        height=_BLOCK,
+        corner_radius=8,
+        border_width=1,
+        border_color=_TILE_BORDER,
     )
     f.pack_propagate(False)
     icon = ctk.CTkLabel(f, text="", image=_icon_image(entry, dimmed=not enabled))
@@ -192,8 +229,12 @@ def _make_block(parent, entry: dict, command) -> ctk.CTkFrame:
 
 def _make_plus_tile(parent, command) -> ctk.CTkFrame:
     f = ctk.CTkFrame(
-        parent, width=_BLOCK, height=_BLOCK,
-        corner_radius=8, border_width=1, border_color=_TILE_BORDER,
+        parent,
+        width=_BLOCK,
+        height=_BLOCK,
+        corner_radius=8,
+        border_width=1,
+        border_color=_TILE_BORDER,
     )
     f.pack_propagate(False)
     lbl = ctk.CTkLabel(f, text="+", font=("Segoe UI", 28), text_color="gray")
@@ -217,7 +258,7 @@ def open_settings() -> None:
 
 
 def _run() -> None:
-    global _root
+    global _root, _ACCENT
     cfg = config.load()
     cfg.setdefault("hotkey", config.DEFAULT_HOTKEY)
     cfg.setdefault("entries", [])
@@ -225,6 +266,8 @@ def _run() -> None:
 
     ctk.set_appearance_mode(cfg.get("theme", "system"))
     ctk.set_default_color_theme("blue")
+    _ACCENT = _system_accent()
+    _apply_accent(_ACCENT)
 
     root = ctk.CTk()
     _root = root
@@ -234,27 +277,34 @@ def _run() -> None:
     root.bind("<<Lift>>", lambda e: (root.deiconify(), root.lift(), root.focus_force()))
     _photo_cache.clear()  # root recreated each open; drop stale CTkImages
 
-    theme_labels = {"system": "System", "light": "Light", "dark": "Dark"}
-    inv_theme = {v: k for k, v in theme_labels.items()}
-
     def launch_now():
         threading.Thread(target=launcher.launch_all, daemon=True).start()
 
     top = ctk.CTkFrame(root, fg_color="transparent")
     top.pack(fill="x", padx=10, pady=(8, 4))
-    ctk.CTkLabel(top, text="App Launcher", font=("Segoe UI", 14, "bold")).pack(side="left")
-    ctk.CTkButton(top, text="Launch Now", width=100, command=launch_now).pack(side="right")
+    ctk.CTkLabel(top, text="App Launcher", font=("Segoe UI", 14, "bold")).pack(
+        side="left"
+    )
+    ctk.CTkButton(top, text="Launch Now", width=100, command=launch_now).pack(
+        side="right"
+    )
 
-    theme_var = tk.StringVar(value=theme_labels.get(cfg.get("theme", "system"), "System"))
+    # CTkSwitch is binary, so it only carries light/dark; a stored "system"
+    # theme is resolved to its current effective value for the initial state.
+    theme_var = tk.StringVar(value=config.resolve_theme(cfg))
 
-    def on_theme_change(choice):
-        cfg["theme"] = inv_theme.get(choice, "system")
+    def on_theme_toggle():
+        cfg["theme"] = theme_var.get()
         config.save(cfg)
         ctk.set_appearance_mode(cfg["theme"])
 
-    ctk.CTkOptionMenu(
-        top, values=list(theme_labels.values()),
-        variable=theme_var, width=90, command=on_theme_change,
+    ctk.CTkSwitch(
+        top,
+        text="Dark",
+        variable=theme_var,
+        onvalue="dark",
+        offvalue="light",
+        command=on_theme_toggle,
     ).pack(side="right", padx=(0, 8))
 
     host = ctk.CTkFrame(root, fg_color="transparent")
@@ -329,7 +379,9 @@ def _run() -> None:
 
     header = ctk.CTkFrame(panel, fg_color="transparent")
     header.pack(fill="x", padx=8, pady=(8, 0))
-    ctk.CTkButton(header, text="◀ Back", width=70, command=close_panel).pack(side="left")
+    ctk.CTkButton(header, text="◀ Back", width=70, command=close_panel).pack(
+        side="left"
+    )
 
     name_var = tk.StringVar()
     path_var = tk.StringVar()
@@ -383,7 +435,9 @@ def _run() -> None:
     add_row(1, "Name", ctk.CTkEntry(body, textvariable=name_var))
 
     path_buttons = ctk.CTkFrame(body, fg_color="transparent")
-    ctk.CTkButton(path_buttons, text="Find", width=50, command=find_by_name).pack(side="left")
+    ctk.CTkButton(path_buttons, text="Find", width=50, command=find_by_name).pack(
+        side="left"
+    )
     ctk.CTkButton(path_buttons, text="…", width=30, command=browse_file).pack(
         side="left", padx=(4, 0)
     )
@@ -393,15 +447,22 @@ def _run() -> None:
         + add_row(4, "Match process", ctk.CTkEntry(body, textvariable=match_var))
     )
     terminal_widgets = add_row(
-        5, "Workdir",
+        5,
+        "Workdir",
         ctk.CTkEntry(body, textvariable=workdir_var),
         ctk.CTkButton(body, text="…", width=30, command=browse_dir),
     ) + add_row(6, "Startup command", ctk.CTkEntry(body, textvariable=cmd_var))
 
     monitor_count = max(1, len(monitors.get_monitors()))
     mon_values = [str(i) for i in range(1, max(monitor_count, 9) + 1)]
-    add_row(7, "Monitor", ctk.CTkOptionMenu(body, values=mon_values, variable=mon_var, width=70))
-    add_row(8, "Zone", ctk.CTkOptionMenu(body, values=list(config.ZONES), variable=zone_var))
+    add_row(
+        7,
+        "Monitor",
+        ctk.CTkOptionMenu(body, values=mon_values, variable=mon_var, width=70),
+    )
+    add_row(
+        8, "Zone", ctk.CTkOptionMenu(body, values=list(config.ZONES), variable=zone_var)
+    )
 
     def update_kind():
         is_app = kind_seg.get() == "App"
@@ -479,8 +540,12 @@ def _run() -> None:
     save_btn = ctk.CTkButton(btns, text="Save", width=70, command=save_entry)
     toggle_btn = ctk.CTkButton(btns, text="Disable", width=70, command=toggle_entry)
     remove_btn = ctk.CTkButton(
-        btns, text="Remove", width=70, command=remove_entry,
-        fg_color="#a03030", hover_color="#c04040",
+        btns,
+        text="Remove",
+        width=70,
+        command=remove_entry,
+        fg_color="#a03030",
+        hover_color="#c04040",
     )
     save_btn.pack(side="left")
 
