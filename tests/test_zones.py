@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from monitors import zone_rect
+from monitors import zone_rect, inflate_for_border
 
 # Odd width/height so the w - hw / h - hh forms are exercised.
 ODD = (0, 0, 2561, 1441)
@@ -53,8 +53,18 @@ def test_halves_tile_exactly():
         assert ty + th == by and th + bh == h and tw == bw == w and tx == bx == x
 
 
+def test_inflate_for_border():
+    # Zero margins is a no-op.
+    assert inflate_for_border((0, 0, 1280, 1440), (0, 0, 0, 0)) == (0, 0, 1280, 1440)
+    # 7px shadow on left/right/bottom, 0 on top (typical DWM border).
+    assert inflate_for_border((0, 0, 1280, 1440), (7, 0, 7, 7)) == (-7, 0, 1294, 1447)
+    # Offset (virtual-desktop) rect inflates the same way.
+    assert inflate_for_border((2560, -120, 960, 1200), (7, 0, 7, 7)) == (2553, -120, 974, 1207)
+
+
 if __name__ == "__main__":
     test_odd_monitor_all_zones()
     test_offset_monitor_all_zones()
     test_halves_tile_exactly()
+    test_inflate_for_border()
     print("test_zones OK")

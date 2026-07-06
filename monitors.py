@@ -33,3 +33,15 @@ def zone_rect(mon: tuple[int, int, int, int], zone: str) -> tuple[int, int, int,
         "bottom-left": (x, y + hh, hw, h - hh),
         "bottom-right": (x + hw, y + hh, w - hw, h - hh),
     }[zone]
+
+
+def inflate_for_border(
+    rect: tuple[int, int, int, int], margins: tuple[int, int, int, int]
+) -> tuple[int, int, int, int]:
+    """Expand a visible-target rect outward by the invisible-border margins so
+    the window's outer bounds land where SetWindowPos needs them for the
+    *visible* edges to match rect. margins is (left, top, right, bottom)."""
+    x, y, w, h = rect
+    left, top, right, bottom = margins
+    return (x - left, y - top, w + left + right, h + top + bottom)
+
