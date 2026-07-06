@@ -279,6 +279,15 @@ def test_resolve_theme_registry_failure_defaults_light():
         assert config.resolve_theme({"theme": "system"}) == "light"
 
 
+def test_palette_light_dark_differ():
+    light = settings_ui._palette(False)
+    dark = settings_ui._palette(True)
+    keys = {"bg", "field", "border", "hover", "text", "text_dim"}
+    assert keys <= set(light) and keys <= set(dark)
+    assert light["bg"] != dark["bg"]
+    assert light["text"] != dark["text"]
+
+
 if __name__ == "__main__":
     test_round_trip()
     test_missing_file_returns_default()
@@ -299,5 +308,6 @@ if __name__ == "__main__":
     test_resolve_theme_explicit()
     test_resolve_theme_system_reads_registry()
     test_resolve_theme_registry_failure_defaults_light()
+    test_palette_light_dark_differ()
     print("test_config OK")
 
