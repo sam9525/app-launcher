@@ -1,14 +1,23 @@
 """Load/save %APPDATA%\\AppLauncher\\config.json. No schema validation by design."""
+
 import json
 import os
-from pathlib import Path
 import winreg
+from pathlib import Path
 
 CONFIG_PATH = Path(os.environ["APPDATA"]) / "AppLauncher" / "config.json"
 DEFAULT_HOTKEY = "ctrl+alt+l"
 ZONES = [
-    "maximized", "left-half", "right-half", "top-half", "bottom-half",
-    "top-left", "top-right", "bottom-left", "bottom-right", "open-only",
+    "maximized",
+    "left-half",
+    "right-half",
+    "top-half",
+    "bottom-half",
+    "top-left",
+    "top-right",
+    "bottom-left",
+    "bottom-right",
+    "open-only",
 ]
 
 
@@ -48,4 +57,3 @@ def resolve_theme(cfg: dict) -> str:
         return "light" if apps_light else "dark"
     except OSError:
         return "light"
-

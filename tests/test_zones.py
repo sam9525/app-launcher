@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from monitors import zone_rect, inflate_for_border
+from monitors import inflate_for_border, zone_rect
 
 # Odd width/height so the w - hw / h - hh forms are exercised.
 ODD = (0, 0, 2561, 1441)
@@ -11,8 +11,15 @@ ODD = (0, 0, 2561, 1441)
 OFFSET = (2560, -120, 1920, 1200)
 
 ALL_ZONES = [
-    "maximized", "left-half", "right-half", "top-half", "bottom-half",
-    "top-left", "top-right", "bottom-left", "bottom-right",
+    "maximized",
+    "left-half",
+    "right-half",
+    "top-half",
+    "bottom-half",
+    "top-left",
+    "top-right",
+    "bottom-left",
+    "bottom-right",
 ]
 
 
@@ -59,7 +66,12 @@ def test_inflate_for_border():
     # 7px shadow on left/right/bottom, 0 on top (typical DWM border).
     assert inflate_for_border((0, 0, 1280, 1440), (7, 0, 7, 7)) == (-7, 0, 1294, 1447)
     # Offset (virtual-desktop) rect inflates the same way.
-    assert inflate_for_border((2560, -120, 960, 1200), (7, 0, 7, 7)) == (2553, -120, 974, 1207)
+    assert inflate_for_border((2560, -120, 960, 1200), (7, 0, 7, 7)) == (
+        2553,
+        -120,
+        974,
+        1207,
+    )
 
 
 if __name__ == "__main__":

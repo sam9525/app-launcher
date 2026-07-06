@@ -1,4 +1,5 @@
 """Entry point: DPI awareness, single-instance mutex, hotkey thread, tray loop."""
+
 import ctypes
 import threading
 
@@ -15,7 +16,8 @@ def main() -> None:
     if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
         MB_ICONINFORMATION = 0x40
         ctypes.windll.user32.MessageBoxW(
-            0, "App Launcher is already running.", "App Launcher", MB_ICONINFORMATION)
+            0, "App Launcher is already running.", "App Launcher", MB_ICONINFORMATION
+        )
         return
 
     import config
@@ -30,6 +32,7 @@ def main() -> None:
     if was_reset:  # missing/corrupt config: get the user straight into Settings
         try:
             import settings_ui
+
             settings_ui.open_settings()
         except ImportError:
             pass  # settings_ui lands in the next task

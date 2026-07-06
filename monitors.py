@@ -1,4 +1,5 @@
 """Monitor enumeration and zone->rect math. All coordinates are physical pixels."""
+
 import win32api
 
 MONITORINFOF_PRIMARY = 1
@@ -44,4 +45,3 @@ def inflate_for_border(
     x, y, w, h = rect
     left, top, right, bottom = margins
     return (x - left, y - top, w + left + right, h + top + bottom)
-

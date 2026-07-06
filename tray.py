@@ -1,4 +1,5 @@
 """pystray icon/menu + RegisterHotKey message loop (runs on a daemon thread)."""
+
 import threading
 
 import pystray
@@ -28,6 +29,7 @@ def _launch_async(icon, item=None):
 def _open_settings(icon, item=None):
     try:
         import settings_ui  # deferred: built last per spec build order
+
         settings_ui.open_settings()
     except ImportError:
         icon.notify("Settings UI not built yet")
@@ -42,7 +44,9 @@ def _on_exit(icon, item=None):
 
 
 def make_icon() -> pystray.Icon:
-    image = Image.new("RGB", (16, 16), (45, 125, 210))  # solid square, no asset to maintain
+    image = Image.new(
+        "RGB", (16, 16), (45, 125, 210)
+    )  # solid square, no asset to maintain
     menu = pystray.Menu(
         pystray.MenuItem("Launch", _launch_async, default=True),
         pystray.MenuItem("Settings", _open_settings),

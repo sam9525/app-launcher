@@ -1,10 +1,11 @@
 """Find-or-launch-then-position core. Single public entry point: launch_all()."""
+
+import ctypes
 import os
 import shlex
 import subprocess
 import threading
 import time
-import ctypes
 from ctypes import wintypes
 
 import pythoncom
@@ -19,7 +20,7 @@ import monitors
 
 POLL_INTERVAL = 0.3
 POLL_TIMEOUT = 15.0
-FOREGROUND_RETRIES = 8          # 8 * 0.25 s ~= 2 s of foreground confirmation attempts
+FOREGROUND_RETRIES = 8  # 8 * 0.25 s ~= 2 s of foreground confirmation attempts
 FOREGROUND_RETRY_DELAY = 0.25
 TERMINAL_PROCESS = "windowsterminal.exe"
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
@@ -41,7 +42,9 @@ def launch_all() -> str:
     if not _run_lock.acquire(blocking=False):
         return "Already running"
     try:
-        entries = [e for e in config.load().get("entries", []) if e.get("enabled", True)]
+        entries = [
+            e for e in config.load().get("entries", []) if e.get("enabled", True)
+        ]
         if not entries:
             return "No enabled entries — open Settings"
         pid_names: dict[int, str | None] = {}  # PID -> basename cache, per run
@@ -116,7 +119,8 @@ def _process_basename(pid: int, pid_names: dict) -> str | None:
     if pid not in pid_names:
         try:
             handle = win32api.OpenProcess(
-                win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+                win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+            )
             try:
                 path = win32process.GetModuleFileNameEx(handle, 0)
             finally:
@@ -133,7 +137,10 @@ def _windows_for(process_name: str, pid_names: dict) -> list[int]:
 
     def callback(hwnd, _):
         try:
-            if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowTextLength(hwnd) > 0:
+            if (
+                win32gui.IsWindowVisible(hwnd)
+                and win32gui.GetWindowTextLength(hwnd) > 0
+            ):
                 _tid, pid = win32process.GetWindowThreadProcessId(hwnd)
                 if _process_basename(pid, pid_names) == target:
                     found.append(hwnd)
@@ -205,16 +212,18 @@ def _position(hwnd: int, monitor_index: int, zone: str) -> None:
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         # move onto the target monitor first: a window maximizes onto whichever
         # monitor it is on
-        win32gui.SetWindowPos(hwnd, 0, x, y, w, h,
-                              win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
+        win32gui.SetWindowPos(
+            hwnd, 0, x, y, w, h, win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE
+        )
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
     else:
         placement = win32gui.GetWindowPlacement(hwnd)
         if placement[1] == win32con.SW_SHOWMAXIMIZED:
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         ox, oy, ow, oh = monitors.inflate_for_border((x, y, w, h), _frame_margins(hwnd))
-        win32gui.SetWindowPos(hwnd, 0, ox, oy, ow, oh,
-                              win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
+        win32gui.SetWindowPos(
+            hwnd, 0, ox, oy, ow, oh, win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE
+        )
 
 
 def _sendkeys_escape(text: str) -> str:
@@ -238,6 +247,3 @@ def _send_startup_command(hwnd: int, command: str) -> bool:
                 pythoncom.CoUninitialize()
         time.sleep(FOREGROUND_RETRY_DELAY)
     return False  # never type into the wrong window
-
-
-

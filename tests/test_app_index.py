@@ -111,7 +111,6 @@ def test_resolve_vscode_start_menu(
     )
 
 
-
 @mock.patch("app_index.winreg.OpenKey")
 @mock.patch("app_index.winreg.EnumKey")
 @mock.patch("app_index.winreg.QueryValueEx")
@@ -124,6 +123,7 @@ def test_resolve_app_paths_env_expansion(
         if index == 0:
             return "my_app.exe"
         raise OSError()
+
     mock_enum.side_effect = enum_side_effect
 
     mock_query_val.return_value = (
@@ -135,7 +135,9 @@ def test_resolve_app_paths_env_expansion(
 
     mock_app_paths_key = mock.MagicMock()
     mock_sub_key = mock.MagicMock()
-    mock_open.side_effect = lambda root, sub: mock_sub_key if sub == "my_app.exe" else mock_app_paths_key
+    mock_open.side_effect = lambda root, sub: (
+        mock_sub_key if sub == "my_app.exe" else mock_app_paths_key
+    )
 
     res = resolve("my_app")
     assert res == "C:\\MyFolder\\my_app.exe"

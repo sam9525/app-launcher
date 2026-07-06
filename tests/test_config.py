@@ -5,10 +5,11 @@ import unittest.mock as mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-import config
 import win32con
-import tray
+
+import config
 import settings_ui
+import tray
 
 
 def _in_tmp(fn):
@@ -27,12 +28,25 @@ def test_round_trip():
         cfg = {
             "hotkey": "ctrl+alt+l",
             "entries": [
-                {"name": "VS Code", "enabled": True, "kind": "app",
-                 "path": "C:\\apps\\Code.exe", "args": "", "match_process": "Code.exe",
-                 "monitor": 1, "zone": "left-half"},
-                {"name": "Claude", "enabled": True, "kind": "terminal",
-                 "workdir": "D:\\proj", "startup_command": "claude",
-                 "monitor": 2, "zone": "right-half"},
+                {
+                    "name": "VS Code",
+                    "enabled": True,
+                    "kind": "app",
+                    "path": "C:\\apps\\Code.exe",
+                    "args": "",
+                    "match_process": "Code.exe",
+                    "monitor": 1,
+                    "zone": "left-half",
+                },
+                {
+                    "name": "Claude",
+                    "enabled": True,
+                    "kind": "terminal",
+                    "workdir": "D:\\proj",
+                    "startup_command": "claude",
+                    "monitor": 2,
+                    "zone": "right-half",
+                },
             ],
         }
         config.save(cfg)
@@ -127,20 +141,22 @@ def test_tray_on_exit():
 
 def test_send_startup_command_com_init_uninit():
     hwnd = 12345
-    with mock.patch("win32gui.GetForegroundWindow", return_value=hwnd), \
-         mock.patch("win32gui.SetForegroundWindow") as mock_set_foreground, \
-         mock.patch("pythoncom.CoInitialize") as mock_co_init, \
-         mock.patch("pythoncom.CoUninitialize") as mock_co_uninit, \
-         mock.patch("win32com.client.Dispatch") as mock_dispatch, \
-         mock.patch("time.sleep") as mock_sleep:
-        
+    with (
+        mock.patch("win32gui.GetForegroundWindow", return_value=hwnd),
+        mock.patch("win32gui.SetForegroundWindow") as mock_set_foreground,
+        mock.patch("pythoncom.CoInitialize") as mock_co_init,
+        mock.patch("pythoncom.CoUninitialize") as mock_co_uninit,
+        mock.patch("win32com.client.Dispatch") as mock_dispatch,
+        mock.patch("time.sleep") as mock_sleep,
+    ):
         import launcher
+
         # Mock Dispatch object to allow SendKeys call
         mock_shell = mock.Mock()
         mock_dispatch.return_value = mock_shell
-        
+
         res = launcher._send_startup_command(hwnd, "test_cmd")
-        
+
         assert res is True
         mock_co_init.assert_called_once()
         mock_co_uninit.assert_called_once()
@@ -150,32 +166,43 @@ def test_send_startup_command_com_init_uninit():
 
 def test_send_startup_command_com_uninit_on_error():
     hwnd = 12345
-    with mock.patch("win32gui.GetForegroundWindow", return_value=hwnd), \
-         mock.patch("win32gui.SetForegroundWindow"), \
-         mock.patch("pythoncom.CoInitialize") as mock_co_init, \
-         mock.patch("pythoncom.CoUninitialize") as mock_co_uninit, \
-         mock.patch("win32com.client.Dispatch", side_effect=RuntimeError("COM error")), \
-         mock.patch("time.sleep"):
-        
+    with (
+        mock.patch("win32gui.GetForegroundWindow", return_value=hwnd),
+        mock.patch("win32gui.SetForegroundWindow"),
+        mock.patch("pythoncom.CoInitialize") as mock_co_init,
+        mock.patch("pythoncom.CoUninitialize") as mock_co_uninit,
+        mock.patch("win32com.client.Dispatch", side_effect=RuntimeError("COM error")),
+        mock.patch("time.sleep"),
+    ):
         import launcher
+
         try:
             launcher._send_startup_command(hwnd, "test_cmd")
         except RuntimeError:
             pass
-        
+
         mock_co_init.assert_called_once()
         mock_co_uninit.assert_called_once()
 
 
 def test_terminal_launched_once_then_skipped():
     import launcher
-    entry = {"name": "Claude", "kind": "terminal", "workdir": "D:\\proj",
-             "startup_command": "", "monitor": 1, "zone": "maximized"}
+
+    entry = {
+        "name": "Claude",
+        "kind": "terminal",
+        "workdir": "D:\\proj",
+        "startup_command": "",
+        "monitor": 1,
+        "zone": "maximized",
+    }
     launcher._launched_terminals.clear()
-    with mock.patch("launcher._windows_for", return_value=[]), \
-         mock.patch("launcher._spawn") as mock_spawn, \
-         mock.patch("launcher._poll_new_window", return_value=999), \
-         mock.patch("launcher._position") as mock_position:
+    with (
+        mock.patch("launcher._windows_for", return_value=[]),
+        mock.patch("launcher._spawn") as mock_spawn,
+        mock.patch("launcher._poll_new_window", return_value=999),
+        mock.patch("launcher._position") as mock_position,
+    ):
         # First press: spawns, positions, marks.
         assert launcher._handle_entry(entry, {}) is None
         assert mock_spawn.call_count == 1
@@ -190,36 +217,54 @@ def test_terminal_launched_once_then_skipped():
 
 def test_position_maximized_restore():
     hwnd = 12345
-    with mock.patch("monitors.get_monitors", return_value=[(0, 0, 1920, 1080)]), \
-         mock.patch("monitors.zone_rect", return_value=(0, 0, 1920, 1080)), \
-         mock.patch("win32gui.IsIconic", return_value=False), \
-         mock.patch("win32gui.GetWindowPlacement") as mock_get_placement, \
-         mock.patch("win32gui.ShowWindow") as mock_show_window, \
-         mock.patch("win32gui.SetWindowPos") as mock_set_window_pos:
-        
-        import launcher
+    with (
+        mock.patch("monitors.get_monitors", return_value=[(0, 0, 1920, 1080)]),
+        mock.patch("monitors.zone_rect", return_value=(0, 0, 1920, 1080)),
+        mock.patch("win32gui.IsIconic", return_value=False),
+        mock.patch("win32gui.GetWindowPlacement") as mock_get_placement,
+        mock.patch("win32gui.ShowWindow") as mock_show_window,
+        mock.patch("win32gui.SetWindowPos") as mock_set_window_pos,
+    ):
         import win32con
-        
+
+        import launcher
+
         # Case 1: Window is already maximized (SW_SHOWMAXIMIZED)
-        mock_get_placement.return_value = (0, win32con.SW_SHOWMAXIMIZED, (0,0), (0,0), (0,0,100,100))
-        
+        mock_get_placement.return_value = (
+            0,
+            win32con.SW_SHOWMAXIMIZED,
+            (0, 0),
+            (0, 0),
+            (0, 0, 100, 100),
+        )
+
         launcher._position(hwnd, 1, "maximized")
-        
+
         # Verify SW_RESTORE was called, then SetWindowPos, then SW_MAXIMIZE
         mock_show_window.assert_any_call(hwnd, win32con.SW_RESTORE)
         mock_show_window.assert_any_call(hwnd, win32con.SW_MAXIMIZE)
         mock_set_window_pos.assert_called_once()
-        
+
         mock_show_window.reset_mock()
         mock_set_window_pos.reset_mock()
-        
+
         # Case 2: Window is not maximized (SW_SHOWNORMAL)
-        mock_get_placement.return_value = (0, win32con.SW_SHOWNORMAL, (0,0), (0,0), (0,0,100,100))
-        
+        mock_get_placement.return_value = (
+            0,
+            win32con.SW_SHOWNORMAL,
+            (0, 0),
+            (0, 0),
+            (0, 0, 100, 100),
+        )
+
         launcher._position(hwnd, 1, "maximized")
-        
+
         # SW_RESTORE should not be called, only SW_MAXIMIZE
-        restore_calls = [call for call in mock_show_window.call_args_list if call[0][1] == win32con.SW_RESTORE]
+        restore_calls = [
+            call
+            for call in mock_show_window.call_args_list
+            if call[0][1] == win32con.SW_RESTORE
+        ]
         assert len(restore_calls) == 0
         mock_show_window.assert_any_call(hwnd, win32con.SW_MAXIMIZE)
         mock_set_window_pos.assert_called_once()
@@ -227,28 +272,36 @@ def test_position_maximized_restore():
 
 def test_position_half_inflates_for_border():
     hwnd = 12345
-    with mock.patch("monitors.get_monitors", return_value=[(0, 0, 1920, 1080)]), \
-         mock.patch("monitors.zone_rect", return_value=(0, 0, 960, 1080)), \
-         mock.patch("launcher._frame_margins", return_value=(7, 0, 7, 7)), \
-         mock.patch("win32gui.IsIconic", return_value=False), \
-         mock.patch("win32gui.GetWindowPlacement",
-                    return_value=(0, win32con.SW_SHOWNORMAL, (0, 0), (0, 0), (0, 0, 100, 100))), \
-         mock.patch("win32gui.ShowWindow"), \
-         mock.patch("win32gui.SetWindowPos") as mock_set_pos:
+    with (
+        mock.patch("monitors.get_monitors", return_value=[(0, 0, 1920, 1080)]),
+        mock.patch("monitors.zone_rect", return_value=(0, 0, 960, 1080)),
+        mock.patch("launcher._frame_margins", return_value=(7, 0, 7, 7)),
+        mock.patch("win32gui.IsIconic", return_value=False),
+        mock.patch(
+            "win32gui.GetWindowPlacement",
+            return_value=(0, win32con.SW_SHOWNORMAL, (0, 0), (0, 0), (0, 0, 100, 100)),
+        ),
+        mock.patch("win32gui.ShowWindow"),
+        mock.patch("win32gui.SetWindowPos") as mock_set_pos,
+    ):
         import launcher
+
         launcher._position(hwnd, 1, "left-half")
         # Visible target (0,0,960,1080) inflated by (7,0,7,7) -> outer (-7,0,974,1087).
         mock_set_pos.assert_called_once_with(
-            hwnd, 0, -7, 0, 974, 1087,
-            win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
+            hwnd, 0, -7, 0, 974, 1087, win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE
+        )
 
 
 def test_position_open_only_is_noop():
     hwnd = 12345
-    with mock.patch("monitors.get_monitors") as mock_get_mons, \
-         mock.patch("win32gui.SetWindowPos") as mock_set_pos, \
-         mock.patch("win32gui.ShowWindow") as mock_show:
+    with (
+        mock.patch("monitors.get_monitors") as mock_get_mons,
+        mock.patch("win32gui.SetWindowPos") as mock_set_pos,
+        mock.patch("win32gui.ShowWindow") as mock_show,
+    ):
         import launcher
+
         launcher._position(hwnd, 1, "open-only")
         mock_get_mons.assert_not_called()
         mock_set_pos.assert_not_called()
@@ -266,19 +319,21 @@ def test_resolve_theme_explicit():
 
 def test_resolve_theme_system_reads_registry():
     # AppsUseLightTheme == 0 -> dark, non-zero/1 -> light.
-    with mock.patch("winreg.OpenKey"), \
-         mock.patch("winreg.QueryValueEx", return_value=(0, 4)):
+    with (
+        mock.patch("winreg.OpenKey"),
+        mock.patch("winreg.QueryValueEx", return_value=(0, 4)),
+    ):
         assert config.resolve_theme({"theme": "system"}) == "dark"
-    with mock.patch("winreg.OpenKey"), \
-         mock.patch("winreg.QueryValueEx", return_value=(1, 4)):
+    with (
+        mock.patch("winreg.OpenKey"),
+        mock.patch("winreg.QueryValueEx", return_value=(1, 4)),
+    ):
         assert config.resolve_theme({}) == "light"  # default is 'system'
 
 
 def test_resolve_theme_registry_failure_defaults_light():
     with mock.patch("winreg.OpenKey", side_effect=OSError):
         assert config.resolve_theme({"theme": "system"}) == "light"
-
-
 
 
 if __name__ == "__main__":
@@ -302,4 +357,3 @@ if __name__ == "__main__":
     test_resolve_theme_system_reads_registry()
     test_resolve_theme_registry_failure_defaults_light()
     print("test_config OK")
-

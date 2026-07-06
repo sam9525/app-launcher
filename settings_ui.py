@@ -18,10 +18,10 @@ import win32gui
 import win32ui
 from PIL import Image, ImageDraw, ImageFont
 
+import app_index
 import config
 import launcher
 import monitors
-import app_index
 
 _ui_thread: threading.Thread | None = None
 _root: ctk.CTk | None = None
