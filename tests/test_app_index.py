@@ -111,9 +111,40 @@ def test_resolve_vscode_start_menu(
     )
 
 
+
+@mock.patch("app_index.winreg.OpenKey")
+@mock.patch("app_index.winreg.EnumKey")
+@mock.patch("app_index.winreg.QueryValueEx")
+@mock.patch("app_index.os.path.exists")
+@mock.patch.dict("os.environ", {"SOME_VAR": "C:\\MyFolder"})
+def test_resolve_app_paths_env_expansion(
+    mock_exists, mock_query_val, mock_enum, mock_open
+):
+    def enum_side_effect(key, index):
+        if index == 0:
+            return "my_app.exe"
+        raise OSError()
+    mock_enum.side_effect = enum_side_effect
+
+    mock_query_val.return_value = (
+        '"%SOME_VAR%\\my_app.exe"',
+        1,
+    )
+
+    mock_exists.side_effect = lambda p: p == "C:\\MyFolder\\my_app.exe"
+
+    mock_app_paths_key = mock.MagicMock()
+    mock_sub_key = mock.MagicMock()
+    mock_open.side_effect = lambda root, sub: mock_sub_key if sub == "my_app.exe" else mock_app_paths_key
+
+    res = resolve("my_app")
+    assert res == "C:\\MyFolder\\my_app.exe"
+
+
 if __name__ == "__main__":
     test_resolve_empty_returns_none()
     test_resolve_nonsense_returns_none_no_raise()
     test_resolve_chrome_app_paths()
     test_resolve_vscode_start_menu()
+    test_resolve_app_paths_env_expansion()
     print("test_app_index OK")

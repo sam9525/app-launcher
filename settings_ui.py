@@ -295,7 +295,7 @@ def _run() -> None:
         ttk.Label(top, text="App Launcher", font=("Segoe UI", 12, "bold")).pack(side="left")
         ttk.Button(top, text="Launch Now", command=launch_now).pack(side="right")
 
-        theme_var = tk.StringVar(value=theme_labels[cfg.get("theme", "system")])
+        theme_var = tk.StringVar(value=theme_labels.get(cfg.get("theme", "system"), "System"))
 
         def on_theme_change(_e=None):
             inv = {v: k for k, v in theme_labels.items()}
