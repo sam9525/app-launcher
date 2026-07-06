@@ -112,6 +112,8 @@ def test_resolve_vscode_start_menu(
 
 
 if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__]))
+    test_resolve_empty_returns_none()
+    test_resolve_nonsense_returns_none_no_raise()
+    test_resolve_chrome_app_paths()
+    test_resolve_vscode_start_menu()
+    print("test_app_index OK")

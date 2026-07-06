@@ -33,7 +33,7 @@ def _from_app_paths(target: str) -> str | None:
                     except OSError:
                         continue
                     if path:
-                        path = path.strip('"')
+                        path = path.strip().strip('"')
                         if os.path.exists(path):
                             return path
         finally:
