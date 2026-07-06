@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 import config
 import launcher
 import monitors
+import app_index
 
 _ui_thread: threading.Thread | None = None
 _root: tk.Tk | None = None
@@ -366,6 +367,17 @@ def _run() -> None:
         if p:
             workdir_var.set(p.replace("/", "\\"))
 
+    def find_by_name():
+        p = app_index.resolve(name_var.get())
+        if p:
+            path_var.set(p.replace("/", "\\"))
+        else:
+            messagebox.showinfo(
+                "App Launcher",
+                "No match found — use the … button to browse.",
+                parent=root,
+            )
+
     def add_row(r, label, widget, extra=None):
         lbl = ttk.Label(body, text=label)
         lbl.grid(row=r, column=0, sticky="w", pady=3, padx=(0, 8))
@@ -392,13 +404,13 @@ def _run() -> None:
     add_row(0, "Kind", kind_frame)
     add_row(1, "Name", ttk.Entry(body, textvariable=name_var))
 
+    path_buttons = ttk.Frame(body)
+    ttk.Button(path_buttons, text="Find", width=5, command=find_by_name).pack(side="left")
+    ttk.Button(path_buttons, text="…", width=3, command=browse_file).pack(
+        side="left", padx=(4, 0)
+    )
     app_widgets = (
-        add_row(
-            2,
-            "Path",
-            ttk.Entry(body, textvariable=path_var),
-            ttk.Button(body, text="…", width=3, command=browse_file),
-        )
+        add_row(2, "Path", ttk.Entry(body, textvariable=path_var), path_buttons)
         + add_row(3, "Args", ttk.Entry(body, textvariable=args_var))
         + add_row(4, "Match process", ttk.Entry(body, textvariable=match_var))
     )
