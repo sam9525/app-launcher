@@ -2,6 +2,7 @@ import pathlib
 import sys
 import unittest.mock as mock
 import tkinter as tk
+import customtkinter as ctk
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -20,29 +21,33 @@ def test_settings_find_button():
             
             def mock_mainloop(self):
                 try:
-                    canvases = []
-                    def find_canvases(widget):
-                        if isinstance(widget, tk.Canvas):
-                            canvases.append(widget)
+                    plus_tiles = []
+                    def find_plus_tiles(widget):
+                        if isinstance(widget, ctk.CTkFrame):
+                            # Check if it has a label child with text "+"
+                            for child in widget.winfo_children():
+                                if isinstance(child, ctk.CTkLabel) and child.cget("text") == "+":
+                                    plus_tiles.append(widget)
+                                    break
                         for child in widget.winfo_children():
-                            find_canvases(child)
+                            find_plus_tiles(child)
                     
-                    find_canvases(self)
-                    assert len(canvases) > 0, "No plus tile canvas found"
+                    find_plus_tiles(self)
+                    assert len(plus_tiles) > 0, "No plus tile found"
                     
                     with mock.patch("app_index.resolve") as mock_resolve:
                         mock_resolve.return_value = "C:/Windows/System32/notepad.exe"
                         
-                        # Trigger plus canvas click to load empty panel
-                        plus_canvas = canvases[0]
-                        plus_canvas.event_generate("<Button-1>")
+                        # Trigger plus tile click to load empty panel
+                        plus_tile = plus_tiles[0]
+                        plus_tile.event_generate("<Button-1>")
                         
                         buttons = []
                         entries = []
                         def find_widgets(widget):
-                            if isinstance(widget, tk.Button) or (hasattr(widget, "cget") and widget.winfo_class() == "TButton"):
+                            if isinstance(widget, ctk.CTkButton):
                                 buttons.append(widget)
-                            if isinstance(widget, tk.Entry) or (hasattr(widget, "cget") and widget.winfo_class() == "TEntry"):
+                            if isinstance(widget, ctk.CTkEntry):
                                 entries.append(widget)
                             for child in widget.winfo_children():
                                 find_widgets(child)
@@ -72,8 +77,8 @@ def test_settings_find_button():
                         assert name_entry is not None, "Name Entry not found"
                         assert path_entry is not None, "Path Entry not found"
                         
-                        name_var_name = name_entry.cget("textvariable")
-                        self.setvar(name_var_name, "notepad")
+                        name_var = name_entry.cget("textvariable")
+                        name_var.set("notepad")
                         
                         # Click the "Find" button
                         find_btn.invoke()
@@ -82,26 +87,26 @@ def test_settings_find_button():
                         mock_resolve.assert_called_once_with("notepad")
                         
                         # Verify Path entry got set to the resolved path
-                        path_var_name = path_entry.cget("textvariable")
-                        assert self.getvar(path_var_name) == "C:\\Windows\\System32\\notepad.exe"
+                        path_var = path_entry.cget("textvariable")
+                        assert path_var.get() == "C:\\Windows\\System32\\notepad.exe"
                         
                     # Now test the case where no match is found
                     with mock.patch("app_index.resolve") as mock_resolve, \
                          mock.patch("tkinter.messagebox.showinfo") as mock_showinfo:
                         mock_resolve.return_value = None
                         
-                        self.setvar(name_var_name, "unknown_app_abc")
+                        name_var.set("unknown_app_abc")
                         find_btn.invoke()
                         
                         mock_resolve.assert_called_once_with("unknown_app_abc")
                         mock_showinfo.assert_called_once()
                         # Path shouldn't have changed
-                        assert self.getvar(path_var_name) == "C:\\Windows\\System32\\notepad.exe"
+                        assert path_var.get() == "C:\\Windows\\System32\\notepad.exe"
                         
                 finally:
                     self.destroy()
             
-            with mock.patch.object(tk.Tk, "mainloop", mock_mainloop):
+            with mock.patch.object(ctk.CTk, "mainloop", mock_mainloop):
                 settings_ui._run()
                 
         finally:

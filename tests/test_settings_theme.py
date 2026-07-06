@@ -2,6 +2,7 @@ import pathlib
 import sys
 import unittest.mock as mock
 import tkinter as tk
+import customtkinter as ctk
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -19,34 +20,33 @@ def test_settings_invalid_theme():
             
             def mock_mainloop(self):
                 try:
-                    comboboxes = []
-                    def find_comboboxes(widget):
-                        if widget.winfo_class() == "TCombobox":
-                            comboboxes.append(widget)
+                    option_menus = []
+                    def find_option_menus(widget):
+                        if isinstance(widget, ctk.CTkOptionMenu):
+                            option_menus.append(widget)
                         for child in widget.winfo_children():
-                            find_comboboxes(child)
+                            find_option_menus(child)
                     
-                    find_comboboxes(self)
-                    theme_cb = None
-                    for cb in comboboxes:
-                        # Values in Combobox are a Tcl tuple or list
-                        vals = cb.cget("values")
-                        # Handle different types returned by tkinter cget
+                    find_option_menus(self)
+                    theme_menu = None
+                    for menu in option_menus:
+                        vals = menu.cget("values")
+                        # Handle different types returned by customtkinter cget
                         if isinstance(vals, str):
                             vals_list = [v.strip() for v in vals.split()]
                         else:
                             vals_list = list(vals)
                         if "System" in vals_list and "Light" in vals_list and "Dark" in vals_list:
-                            theme_cb = cb
+                            theme_menu = menu
                             break
                     
-                    assert theme_cb is not None, "Theme Combobox not found"
-                    var_name = theme_cb.cget("textvariable")
-                    assert self.getvar(var_name) == "System"
+                    assert theme_menu is not None, "Theme OptionMenu not found"
+                    var = theme_menu.cget("variable")
+                    assert var.get() == "System"
                 finally:
                     self.destroy()
             
-            with mock.patch.object(tk.Tk, "mainloop", mock_mainloop):
+            with mock.patch.object(ctk.CTk, "mainloop", mock_mainloop):
                 settings_ui._run()
                 
         finally:
