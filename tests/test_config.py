@@ -259,6 +259,26 @@ def test_open_only_in_zones():
     assert "open-only" in config.ZONES
 
 
+def test_resolve_theme_explicit():
+    assert config.resolve_theme({"theme": "dark"}) == "dark"
+    assert config.resolve_theme({"theme": "light"}) == "light"
+
+
+def test_resolve_theme_system_reads_registry():
+    # AppsUseLightTheme == 0 -> dark, non-zero/1 -> light.
+    with mock.patch("winreg.OpenKey"), \
+         mock.patch("winreg.QueryValueEx", return_value=(0, 4)):
+        assert config.resolve_theme({"theme": "system"}) == "dark"
+    with mock.patch("winreg.OpenKey"), \
+         mock.patch("winreg.QueryValueEx", return_value=(1, 4)):
+        assert config.resolve_theme({}) == "light"  # default is 'system'
+
+
+def test_resolve_theme_registry_failure_defaults_light():
+    with mock.patch("winreg.OpenKey", side_effect=OSError):
+        assert config.resolve_theme({"theme": "system"}) == "light"
+
+
 if __name__ == "__main__":
     test_round_trip()
     test_missing_file_returns_default()
@@ -276,4 +296,8 @@ if __name__ == "__main__":
     test_position_half_inflates_for_border()
     test_position_open_only_is_noop()
     test_open_only_in_zones()
+    test_resolve_theme_explicit()
+    test_resolve_theme_system_reads_registry()
+    test_resolve_theme_registry_failure_defaults_light()
     print("test_config OK")
+

@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import winreg
 
 CONFIG_PATH = Path(os.environ["APPDATA"]) / "AppLauncher" / "config.json"
 DEFAULT_HOTKEY = "ctrl+alt+l"
@@ -30,3 +31,21 @@ def save(cfg: dict) -> None:
     tmp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".tmp")
     tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     os.replace(tmp, CONFIG_PATH)
+
+
+_PERSONALIZE = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+
+
+def resolve_theme(cfg: dict) -> str:
+    """Effective theme, 'light' or 'dark'. cfg['theme'] is 'system' (default),
+    'light', or 'dark'; 'system' follows the Windows AppsUseLightTheme setting."""
+    pref = cfg.get("theme", "system")
+    if pref in ("light", "dark"):
+        return pref
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _PERSONALIZE) as k:
+            apps_light, _ = winreg.QueryValueEx(k, "AppsUseLightTheme")
+        return "light" if apps_light else "dark"
+    except OSError:
+        return "light"
+
