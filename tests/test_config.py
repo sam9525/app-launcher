@@ -225,6 +225,24 @@ def test_position_maximized_restore():
         mock_set_window_pos.assert_called_once()
 
 
+def test_position_half_inflates_for_border():
+    hwnd = 12345
+    with mock.patch("monitors.get_monitors", return_value=[(0, 0, 1920, 1080)]), \
+         mock.patch("monitors.zone_rect", return_value=(0, 0, 960, 1080)), \
+         mock.patch("launcher._frame_margins", return_value=(7, 0, 7, 7)), \
+         mock.patch("win32gui.IsIconic", return_value=False), \
+         mock.patch("win32gui.GetWindowPlacement",
+                    return_value=(0, win32con.SW_SHOWNORMAL, (0, 0), (0, 0), (0, 0, 100, 100))), \
+         mock.patch("win32gui.ShowWindow"), \
+         mock.patch("win32gui.SetWindowPos") as mock_set_pos:
+        import launcher
+        launcher._position(hwnd, 1, "left-half")
+        # Visible target (0,0,960,1080) inflated by (7,0,7,7) -> outer (-7,0,974,1087).
+        mock_set_pos.assert_called_once_with(
+            hwnd, 0, -7, 0, 974, 1087,
+            win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
+
+
 if __name__ == "__main__":
     test_round_trip()
     test_missing_file_returns_default()
@@ -239,4 +257,5 @@ if __name__ == "__main__":
     test_send_startup_command_com_uninit_on_error()
     test_terminal_launched_once_then_skipped()
     test_position_maximized_restore()
+    test_position_half_inflates_for_border()
     print("test_config OK")

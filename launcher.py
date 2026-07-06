@@ -4,6 +4,8 @@ import shlex
 import subprocess
 import threading
 import time
+import ctypes
+from ctypes import wintypes
 
 import pythoncom
 import win32api
@@ -20,6 +22,7 @@ POLL_TIMEOUT = 15.0
 FOREGROUND_RETRIES = 8          # 8 * 0.25 s ~= 2 s of foreground confirmation attempts
 FOREGROUND_RETRY_DELAY = 0.25
 TERMINAL_PROCESS = "windowsterminal.exe"
+DWMWA_EXTENDED_FRAME_BOUNDS = 9
 
 # ponytail: global lock; fine for a single user mashing one hotkey
 _run_lock = threading.Lock()
@@ -161,6 +164,32 @@ def _poll_new_window(process_name: str, before: set, pid_names: dict) -> int | N
     return None
 
 
+def _frame_margins(hwnd: int) -> tuple[int, int, int, int]:
+    """(left, top, right, bottom) thickness of the invisible DWM border, so a
+    zone rect can be inflated to make the *visible* window edges land flush.
+    Returns (0, 0, 0, 0) if DWM can't be queried — positioning then behaves as
+    it did before (bounding box aligned, slight visible gap)."""
+    try:
+        outer = win32gui.GetWindowRect(hwnd)  # (left, top, right, bottom)
+        rect = wintypes.RECT()
+        hr = ctypes.windll.dwmapi.DwmGetWindowAttribute(
+            wintypes.HWND(hwnd),
+            ctypes.c_uint(DWMWA_EXTENDED_FRAME_BOUNDS),
+            ctypes.byref(rect),
+            ctypes.sizeof(rect),
+        )
+        if hr != 0:
+            return (0, 0, 0, 0)
+        return (
+            rect.left - outer[0],
+            rect.top - outer[1],
+            outer[2] - rect.right,
+            outer[3] - rect.bottom,
+        )
+    except Exception:
+        return (0, 0, 0, 0)
+
+
 def _position(hwnd: int, monitor_index: int, zone: str) -> None:
     mons = monitors.get_monitors()
     # clamp out-of-range monitor index to primary rather than fail
@@ -181,7 +210,8 @@ def _position(hwnd: int, monitor_index: int, zone: str) -> None:
         placement = win32gui.GetWindowPlacement(hwnd)
         if placement[1] == win32con.SW_SHOWMAXIMIZED:
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.SetWindowPos(hwnd, 0, x, y, w, h,
+        ox, oy, ow, oh = monitors.inflate_for_border((x, y, w, h), _frame_margins(hwnd))
+        win32gui.SetWindowPos(hwnd, 0, ox, oy, ow, oh,
                               win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
 
 
