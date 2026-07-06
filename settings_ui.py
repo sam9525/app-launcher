@@ -287,7 +287,9 @@ def _run() -> None:
 
     host.bind("<Configure>", on_host_resize)
 
-    panel = ctk.CTkFrame(host, corner_radius=0, border_width=1, border_color=_TILE_BORDER)
+    panel = ctk.CTkFrame(
+        host, width=_PANEL_W, corner_radius=0, border_width=1, border_color=_TILE_BORDER
+    )
     anim = {"busy": False, "open": False}
     state = {"index": None}
 
@@ -315,7 +317,7 @@ def _run() -> None:
             if isinstance(child, ctk.CTkFrame):
                 child.configure(border_color=_TILE_BORDER)
         anim["open"] = True
-        panel.place(x=-_PANEL_W, y=0, width=_PANEL_W, relheight=1.0)
+        panel.place(x=-_PANEL_W, y=0, relheight=1.0)
         panel.lift()
         slide(-_PANEL_W, 0)
 
