@@ -32,8 +32,10 @@ def _from_app_paths(target: str) -> str | None:
                             path, _ = winreg.QueryValueEx(sk, None)  # default value
                     except OSError:
                         continue
-                    if path and os.path.exists(path):
-                        return path
+                    if path:
+                        path = path.strip('"')
+                        if os.path.exists(path):
+                            return path
         finally:
             key.Close()
     return None
