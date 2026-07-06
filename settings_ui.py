@@ -189,10 +189,11 @@ def _icon_image(entry: dict, dimmed: bool = False) -> ctk.CTkImage:
     return img
 
 
-def _make_block(parent, entry: dict, command) -> ctk.CTkFrame:
+def _make_block(parent, entry: dict, command, on_toggle, on_open) -> ctk.CTkFrame:
     enabled = entry.get("enabled", True)
+    wrap = ctk.CTkFrame(parent, fg_color="transparent")
     f = ctk.CTkFrame(
-        parent,
+        wrap,
         width=_BLOCK,
         height=_BLOCK,
         corner_radius=8,
@@ -209,6 +210,12 @@ def _make_block(parent, entry: dict, command) -> ctk.CTkFrame:
         label.configure(text_color="gray")
     icon.pack(pady=(12, 2))
     label.pack()
+    f.pack()
+
+    sw = ctk.CTkSwitch(wrap, text="", width=40, command=on_toggle)
+    (sw.select if enabled else sw.deselect)()
+    sw.pack(pady=(6, 2))
+    ctk.CTkButton(wrap, text="Open", width=_BLOCK, height=24, command=on_open).pack()
 
     def on_enter(_e):
         f.configure(border_color=_ACCENT)
@@ -224,7 +231,7 @@ def _make_block(parent, entry: dict, command) -> ctk.CTkFrame:
     f.bind("<Leave>", on_leave)
     for w in (f, icon, label):
         w.bind("<Button-1>", lambda _e: command())
-    return f
+    return wrap
 
 
 def _make_plus_tile(parent, command) -> ctk.CTkFrame:
@@ -319,13 +326,29 @@ def _run() -> None:
         config.save(cfg)
         refresh()
 
+    def toggle_at(i):
+        e = cfg["entries"][i]
+        e["enabled"] = not e.get("enabled", True)
+        persist()
+
+    def open_one(entry):
+        threading.Thread(
+            target=launcher._handle_entry, args=(entry, {}), daemon=True
+        ).start()
+
     def refresh():
         for w in grid.winfo_children():
             w.destroy()
         cols = max(1, host.winfo_width() // (_BLOCK + 2 * _PAD))
         grid_cols[0] = cols
         for i, entry in enumerate(cfg["entries"]):
-            block = _make_block(grid, entry, lambda i=i: load_panel(i))
+            block = _make_block(
+                grid,
+                entry,
+                lambda i=i: load_panel(i),
+                lambda i=i: toggle_at(i),
+                lambda e=entry: open_one(e),
+            )
             block.grid(row=i // cols, column=i % cols, padx=_PAD, pady=_PAD)
         n = len(cfg["entries"])
         plus = _make_plus_tile(grid, lambda: load_panel(None))
