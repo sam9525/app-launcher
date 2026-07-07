@@ -23,6 +23,16 @@ POLL_TIMEOUT = 15.0
 FOREGROUND_RETRIES = 8  # 8 * 0.25 s ~= 2 s of foreground confirmation attempts
 FOREGROUND_RETRY_DELAY = 0.25
 TERMINAL_PROCESS = "windowsterminal.exe"
+EXPLORER_PROCESS = "explorer.exe"
+MAX_EXPLORER_FOLDERS = 6  # first tab + 5 more; caps focus-steal time
+# Predefined delays between the tab keystrokes. The one that matters most is
+# TAB_OPEN: a freshly Ctrl+T'd tab lands on "Home" and isn't ready for address-
+# bar input for a moment — too short and the tab stays blank. Tune upward if
+# folders still land on Home (slower machine / heavier Explorer).
+EXPLORER_WINDOW_READY_DELAY = 1.0  # window open -> input-ready before 1st Ctrl+T
+EXPLORER_TAB_OPEN_DELAY = 1.0  # after Ctrl+T: let the new tab become input-ready
+EXPLORER_FOCUS_DELAY = 0.4  # after Ctrl+L: let the address bar take focus
+EXPLORER_NAV_DELAY = 0.6  # after Enter: let the folder load before the next tab
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
 
 # ponytail: global lock; fine for a single user mashing one hotkey
@@ -33,9 +43,18 @@ _run_lock = threading.Lock()
 # ponytail: in-memory set, no persistence — a fresh run reopens terminals
 _launched_terminals: set = set()
 
+# Explorer groups launched once per run, keyed (name, tuple(folders)).
+# ponytail: in-memory set, no persistence — a fresh run reopens windows
+_launched_explorers: set = set()
+
 
 def _terminal_key(entry: dict) -> tuple:
     return (entry.get("name"), entry.get("workdir"))
+
+
+def parse_folder_lines(text: str) -> list[str]:
+    """One folder path per line; blanks and surrounding whitespace dropped."""
+    return [ln.strip() for ln in text.splitlines() if ln.strip()]
 
 
 def launch_all() -> str:
@@ -93,6 +112,33 @@ def _handle_entry(entry: dict, pid_names: dict) -> str | None:
             return "opened, command not sent"
         return None
 
+    if entry.get("kind") == "explorer":
+        # One shared process like terminals: open once per run, then leave
+        # alone. Never _find_window — all Explorer windows share one process.
+        folders = entry.get("folders", [])
+        if not folders:
+            return "no folders configured"
+        capped = folders[:MAX_EXPLORER_FOLDERS]
+        key = (entry.get("name"), tuple(capped))
+        if key in _launched_explorers:
+            return None
+        before = set(_windows_for(EXPLORER_PROCESS, pid_names))
+        _spawn(entry)
+        # ponytail: if explorer.exe reuses an existing window instead of
+        # spawning one, poll finds nothing new — tabs are not added
+        hwnd = _poll_new_window(EXPLORER_PROCESS, before, pid_names)
+        if hwnd is None:
+            return "unpositioned (no window within 15 s)"
+        _position(hwnd, monitor, zone)
+        sent = _send_explorer_tabs(hwnd, capped[1:])
+        _launched_explorers.add(key)  # mark only after it actually opened
+        notes = []
+        if len(folders) > MAX_EXPLORER_FOLDERS:
+            notes.append(f"capped to {MAX_EXPLORER_FOLDERS} folders")
+        if sent < len(capped) - 1:
+            notes.append(f"{len(capped) - 1 - sent} tab(s) not sent")
+        return "; ".join(notes) or None
+
     # Regular apps: find-or-launch by process basename, reposition every press.
     proc_name = entry["match_process"]
     hwnd = _find_window(proc_name, pid_names)
@@ -111,6 +157,8 @@ def _handle_entry(entry: dict, pid_names: dict) -> str | None:
 def _spawn(entry: dict) -> None:
     if entry.get("kind") == "terminal":
         subprocess.Popen(["wt.exe", "-d", entry["workdir"]])
+    elif entry.get("kind") == "explorer":
+        subprocess.Popen(["explorer.exe", entry["folders"][0]])
     else:
         subprocess.Popen([entry["path"]] + shlex.split(entry.get("args", "")))
 
@@ -230,20 +278,55 @@ def _sendkeys_escape(text: str) -> str:
     return "".join(f"{{{c}}}" if c in "+^%~(){}[]" else c for c in text)
 
 
-def _send_startup_command(hwnd: int, command: str) -> bool:
-    """Type command into the terminal ONLY if it is confirmed foreground."""
+def _confirm_foreground(hwnd: int) -> bool:
+    """Try to raise hwnd to the foreground; True once it actually is."""
     for _ in range(FOREGROUND_RETRIES):
         try:
             win32gui.SetForegroundWindow(hwnd)
         except Exception:
             pass  # Windows foreground-lock can refuse; retry
         if win32gui.GetForegroundWindow() == hwnd:
-            pythoncom.CoInitialize()  # launch_all runs on worker threads
-            try:
-                shell = win32com.client.Dispatch("WScript.Shell")
-                shell.SendKeys(_sendkeys_escape(command) + "{ENTER}")
-                return True
-            finally:
-                pythoncom.CoUninitialize()
+            return True
         time.sleep(FOREGROUND_RETRY_DELAY)
-    return False  # never type into the wrong window
+    return False
+
+
+def _send_startup_command(hwnd: int, command: str) -> bool:
+    """Type command into the terminal ONLY if it is confirmed foreground."""
+    if not _confirm_foreground(hwnd):
+        return False  # never type into the wrong window
+    pythoncom.CoInitialize()  # launch_all runs on worker threads
+    try:
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shell.SendKeys(_sendkeys_escape(command) + "{ENTER}")
+        return True
+    finally:
+        pythoncom.CoUninitialize()
+
+
+def _send_explorer_tabs(hwnd: int, folders: list) -> int:
+    """Open each folder as a new tab via keystrokes, ONLY while hwnd stays
+    confirmed foreground. Returns the number of tabs sent; stops at the first
+    folder where foreground can't be confirmed (never blind-type).
+    # ponytail: focus-stealing SendKeys is the only tab mechanism Windows offers
+    """
+    sent = 0
+    pythoncom.CoInitialize()
+    try:
+        keys = win32com.client.Dispatch("WScript.Shell")
+        # the window just opened via explorer.exe — let it settle before the
+        # first Ctrl+T, or that tab races the window's own initial load
+        time.sleep(EXPLORER_WINDOW_READY_DELAY)
+        for path in folders:
+            if not _confirm_foreground(hwnd):
+                break
+            keys.SendKeys("^t")  # new tab (lands on Home)
+            time.sleep(EXPLORER_TAB_OPEN_DELAY)
+            keys.SendKeys("^l")  # focus the address bar
+            time.sleep(EXPLORER_FOCUS_DELAY)
+            keys.SendKeys(_sendkeys_escape(path) + "{ENTER}")
+            time.sleep(EXPLORER_NAV_DELAY)
+            sent += 1
+    finally:
+        pythoncom.CoUninitialize()
+    return sent

@@ -24,34 +24,24 @@ def test_settings_invalid_theme():
 
             def mock_mainloop(self):
                 try:
-                    option_menus = []
+                    switches = []
 
-                    def find_option_menus(widget):
-                        if isinstance(widget, ctk.CTkOptionMenu):
-                            option_menus.append(widget)
+                    def find_switches(widget):
+                        if isinstance(widget, ctk.CTkSwitch):
+                            switches.append(widget)
                         for child in widget.winfo_children():
-                            find_option_menus(child)
+                            find_switches(child)
 
-                    find_option_menus(self)
-                    theme_menu = None
-                    for menu in option_menus:
-                        vals = menu.cget("values")
-                        # Handle different types returned by customtkinter cget
-                        if isinstance(vals, str):
-                            vals_list = [v.strip() for v in vals.split()]
-                        else:
-                            vals_list = list(vals)
-                        if (
-                            "System" in vals_list
-                            and "Light" in vals_list
-                            and "Dark" in vals_list
-                        ):
-                            theme_menu = menu
+                    find_switches(self)
+                    theme_switch = None
+                    for sw in switches:
+                        if sw.cget("text") == "Dark":
+                            theme_switch = sw
                             break
 
-                    assert theme_menu is not None, "Theme OptionMenu not found"
-                    var = theme_menu.cget("variable")
-                    assert var.get() == "System"
+                    assert theme_switch is not None, "Theme switch not found"
+                    var = theme_switch.cget("variable")
+                    assert var.get() in ("light", "dark")
                 finally:
                     self.destroy()
 
