@@ -23,6 +23,9 @@ POLL_TIMEOUT = 15.0
 FOREGROUND_RETRIES = 8  # 8 * 0.25 s ~= 2 s of foreground confirmation attempts
 FOREGROUND_RETRY_DELAY = 0.25
 TERMINAL_PROCESS = "windowsterminal.exe"
+EXPLORER_PROCESS = "explorer.exe"
+MAX_EXPLORER_FOLDERS = 6  # first tab + 5 more; caps focus-steal time
+EXPLORER_TAB_DELAY = 0.4  # ponytail: fixed sleep between tab keystrokes; the flaky knob
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
 
 # ponytail: global lock; fine for a single user mashing one hotkey
@@ -33,9 +36,18 @@ _run_lock = threading.Lock()
 # ponytail: in-memory set, no persistence — a fresh run reopens terminals
 _launched_terminals: set = set()
 
+# Explorer groups launched once per run, keyed (name, tuple(folders)).
+# ponytail: in-memory set, no persistence — a fresh run reopens windows
+_launched_explorers: set = set()
+
 
 def _terminal_key(entry: dict) -> tuple:
     return (entry.get("name"), entry.get("workdir"))
+
+
+def parse_folder_lines(text: str) -> list[str]:
+    """One folder path per line; blanks and surrounding whitespace dropped."""
+    return [ln.strip() for ln in text.splitlines() if ln.strip()]
 
 
 def launch_all() -> str:
