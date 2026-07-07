@@ -4,19 +4,11 @@ build_map draws it on a tkinter.Canvas. All coordinates are physical pixels."""
 
 import tkinter as tk
 
+import config
 import monitors
 
-_SPATIAL_ZONES = [
-    "maximized",
-    "left-half",
-    "right-half",
-    "top-half",
-    "bottom-half",
-    "top-left",
-    "top-right",
-    "bottom-left",
-    "bottom-right",
-]
+# The 9 spatial zones are every zone except the trailing non-spatial "open-only".
+_SPATIAL_ZONES = config.ZONES[:-1]
 
 
 def layout_monitors(mons, max_w, max_h, gap=3):
@@ -53,18 +45,22 @@ def pick_zone(mon_px_rect, x, y):
     return best
 
 
-def build_map(parent, mons, monitor_index, zone, width, height, accent, bg,
-              on_pick=None):
+def build_map(
+    parent, mons, monitor_index, zone, width, height, accent, bg, on_pick=None
+):
     """Canvas of one square per monitor, target zone filled in accent. If
     on_pick is given, a click calls on_pick(monitor_1based, zone)."""
     canvas = tk.Canvas(
         parent, width=width, height=height, highlightthickness=0, bd=0, bg=bg
     )
     rects = layout_monitors(mons, width - 2, height - 2, gap=3)
+    # Mirror launcher's clamp: an out-of-range monitor index positions on the
+    # primary monitor (launcher.py), so highlight monitor 1 in that case.
+    target = monitor_index if 1 <= monitor_index <= len(mons) else 1
     outline = "#888888"
     for i, (x, y, w, h) in enumerate(rects):
         x0, y0 = x + 1, y + 1
-        is_target = (i + 1 == monitor_index) and (zone in _SPATIAL_ZONES)
+        is_target = (i + 1 == target) and (zone in _SPATIAL_ZONES)
         canvas.create_rectangle(x0, y0, x0 + w, y0 + h, outline=outline, width=1)
         if is_target:
             zx, zy, zw, zh = monitors.zone_rect((x0, y0, w, h), zone)

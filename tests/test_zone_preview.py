@@ -32,6 +32,14 @@ def test_layout_two_monitors_ordered_non_overlapping_in_box():
         assert y >= -1e-6 and y + h <= 28 + 1e-6
 
 
+def test_layout_scales_oversized_monitor_to_fit_keeping_aspect():
+    rects = layout_monitors([MON_16_9], 20, 10, gap=3)
+    assert len(rects) == 1
+    x, y, w, h = rects[0]
+    assert x + w <= 20 + 1e-6 and y + h <= 10 + 1e-6
+    assert _approx(w / h, 1920 / 1080, tol=1e-3)
+
+
 def test_pick_zone_center_edges_corners():
     assert pick_zone(SQUARE, 50, 50) == "maximized"
     assert pick_zone(SQUARE, 5, 5) == "top-left"
@@ -47,5 +55,6 @@ def test_pick_zone_center_edges_corners():
 if __name__ == "__main__":
     test_layout_single_monitor_fits_and_keeps_aspect()
     test_layout_two_monitors_ordered_non_overlapping_in_box()
+    test_layout_scales_oversized_monitor_to_fit_keeping_aspect()
     test_pick_zone_center_edges_corners()
     print("test_zone_preview OK")
