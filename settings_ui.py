@@ -170,11 +170,13 @@ def _letter_tile(name: str | None, size: int) -> Image.Image:
 
 def _icon_image(entry: dict, dimmed: bool = False) -> ctk.CTkImage:
     """48px tile icon for an entry, letter-tile fallback, cached."""
-    src = (
-        shutil.which("wt.exe")
-        if entry.get("kind") == "terminal"
-        else entry.get("path", "")
-    ) or ""
+    kind = entry.get("kind")
+    if kind == "terminal":
+        src = shutil.which("wt.exe") or ""
+    elif kind == "explorer":
+        src = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "explorer.exe")
+    else:
+        src = entry.get("path", "") or ""
     name = str(entry.get("name") or "")
     base_key = src or "letter:" + name
     key = (base_key, dimmed)
@@ -475,7 +477,7 @@ def _run() -> None:
         return [lbl, widget] + ([extra] if extra is not None else [])
 
     kind_seg = ctk.CTkSegmentedButton(
-        body, values=["App", "Terminal"], command=lambda _v: update_kind()
+        body, values=["App", "Terminal", "Explorer"], command=lambda _v: update_kind()
     )
     kind_seg.set("App")
     add_row(0, "Kind", kind_seg)
@@ -499,6 +501,23 @@ def _run() -> None:
         ctk.CTkEntry(body, textvariable=workdir_var),
         ctk.CTkButton(body, text="…", width=30, command=browse_dir),
     ) + add_row(6, "Startup command", ctk.CTkEntry(body, textvariable=cmd_var))
+
+    folders_box = ctk.CTkTextbox(body, height=90)
+
+    def browse_folder_append():
+        p = filedialog.askdirectory(parent=root)
+        if p:
+            p = p.replace("/", "\\")
+            cur = folders_box.get("1.0", "end").strip()
+            folders_box.delete("1.0", "end")
+            folders_box.insert("1.0", cur + "\n" + p if cur else p)
+
+    explorer_widgets = add_row(
+        5,
+        "Folders",
+        folders_box,
+        ctk.CTkButton(body, text="…", width=30, command=browse_folder_append),
+    )
 
     monitor_count = max(1, len(mons))
     mon_values = [str(i) for i in range(1, monitor_count + 1)]
@@ -538,11 +557,11 @@ def _run() -> None:
     zone_menu.configure(command=lambda _v: redraw_map())
 
     def update_kind():
-        is_app = kind_seg.get() == "App"
-        for w in app_widgets:
-            w.grid() if is_app else w.grid_remove()
-        for w in terminal_widgets:
-            w.grid_remove() if is_app else w.grid()
+        kind = kind_seg.get()
+        sets = {"App": app_widgets, "Terminal": terminal_widgets, "Explorer": explorer_widgets}
+        for name, widgets in sets.items():
+            for w in widgets:
+                w.grid() if name == kind else w.grid_remove()
 
     def save_entry():
         if anim["busy"]:
@@ -557,7 +576,7 @@ def _run() -> None:
             monitor = 1
         i = state["index"]
         old = cfg["entries"][i] if i is not None else {}
-        kind = "app" if kind_seg.get() == "App" else "terminal"
+        kind = {"App": "app", "Terminal": "terminal", "Explorer": "explorer"}[kind_seg.get()]
         entry = {
             "name": name,
             "enabled": old.get("enabled", True),
@@ -571,10 +590,19 @@ def _run() -> None:
             entry["args"] = args_var.get().strip()
             entry["match_process"] = match_var.get().strip() or os.path.basename(path)
             check_path = path
-        else:
+        elif kind == "terminal":
             entry["workdir"] = workdir_var.get().strip()
             entry["startup_command"] = cmd_var.get().strip()
             check_path = entry["workdir"]
+        else:  # explorer
+            folders = launcher.parse_folder_lines(folders_box.get("1.0", "end"))
+            if not folders:
+                messagebox.showwarning(
+                    "App Launcher", "At least one folder is required.", parent=root
+                )
+                return
+            entry["folders"] = folders
+            check_path = folders[0]
         if check_path and not os.path.exists(check_path):
             if not messagebox.askyesno(
                 "App Launcher",
@@ -627,13 +655,19 @@ def _run() -> None:
             return
         state["index"] = i
         e = cfg["entries"][i] if i is not None else {}
-        kind_seg.set("App" if e.get("kind", "app") == "app" else "Terminal")
+        kind_seg.set(
+            {"app": "App", "terminal": "Terminal", "explorer": "Explorer"}[
+                e.get("kind", "app")
+            ]
+        )
         name_var.set(e.get("name", ""))
         path_var.set(e.get("path", ""))
         args_var.set(e.get("args", ""))
         match_var.set(e.get("match_process", ""))
         workdir_var.set(e.get("workdir", ""))
         cmd_var.set(e.get("startup_command", ""))
+        folders_box.delete("1.0", "end")
+        folders_box.insert("1.0", "\n".join(e.get("folders", [])))
         mon_var.set(str(e.get("monitor", 1)))
         zone_var.set(e.get("zone", "maximized"))
         update_kind()
