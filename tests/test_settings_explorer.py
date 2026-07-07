@@ -122,7 +122,21 @@ def test_settings_explorer_flow():
                             "C:\\Users",
                         ]
 
+                    # 3b. Test validation warning when multiple folders do not exist
+                    folders_box.delete("1.0", "end")
+                    folders_box.insert("1.0", "C:\\InvalidPathXYZ1\nC:\\InvalidPathXYZ2")
+                    with mock.patch("settings_ui.messagebox.askyesno", return_value=False) as mock_ask:
+                        save_btn.invoke()
+                        assert mock_ask.called
+                        msg = mock_ask.call_args[0][1]
+                        assert "C:\\InvalidPathXYZ1" in msg
+                        assert "C:\\InvalidPathXYZ2" in msg
+                        assert "The following folders do not exist" in msg
+                        cfg = config.load()
+                        assert len(cfg["entries"]) == 1
+
                     # 4. Test modifying and saving
+                    folders_box.delete("1.0", "end")
                     folders_box.insert("1.0", "C:\\Program Files\nD:\\projects")
                     with mock.patch("settings_ui.messagebox.askyesno", return_value=True):
                         save_btn.invoke()

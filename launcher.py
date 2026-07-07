@@ -304,19 +304,19 @@ def _send_explorer_tabs(hwnd: int, folders: list) -> int:
     # ponytail: focus-stealing SendKeys is the only tab mechanism Windows offers
     """
     sent = 0
-    for path in folders:
-        if not _confirm_foreground(hwnd):
-            break
-        pythoncom.CoInitialize()
-        try:
-            shell = win32com.client.Dispatch("WScript.Shell")
+    pythoncom.CoInitialize()
+    try:
+        shell = win32com.client.Dispatch("WScript.Shell")
+        for path in folders:
+            if not _confirm_foreground(hwnd):
+                break
             shell.SendKeys("^t")  # new tab
             time.sleep(EXPLORER_TAB_DELAY)
             shell.SendKeys("^l")  # focus address bar
             time.sleep(EXPLORER_TAB_DELAY)
             shell.SendKeys(_sendkeys_escape(path) + "{ENTER}")
             time.sleep(EXPLORER_TAB_DELAY)
-        finally:
-            pythoncom.CoUninitialize()
-        sent += 1
+            sent += 1
+    finally:
+        pythoncom.CoUninitialize()
     return sent

@@ -356,9 +356,14 @@ def _run() -> None:
         persist()
 
     def open_one(entry):
-        threading.Thread(
-            target=launcher._handle_entry, args=(entry, {}), daemon=True
-        ).start()
+        def target():
+            if not launcher._run_lock.acquire(blocking=False):
+                return
+            try:
+                launcher._handle_entry(entry, {})
+            finally:
+                launcher._run_lock.release()
+        threading.Thread(target=target, daemon=True).start()
 
     def refresh():
         for w in grid.winfo_children():
@@ -589,11 +594,11 @@ def _run() -> None:
             entry["path"] = path
             entry["args"] = args_var.get().strip()
             entry["match_process"] = match_var.get().strip() or os.path.basename(path)
-            check_path = path
+            check_paths = [path] if path else []
         elif kind == "terminal":
             entry["workdir"] = workdir_var.get().strip()
             entry["startup_command"] = cmd_var.get().strip()
-            check_path = entry["workdir"]
+            check_paths = [entry["workdir"]] if entry["workdir"] else []
         else:  # explorer
             folders = launcher.parse_folder_lines(folders_box.get("1.0", "end"))
             if not folders:
@@ -602,11 +607,17 @@ def _run() -> None:
                 )
                 return
             entry["folders"] = folders
-            check_path = folders[0]
-        if check_path and not os.path.exists(check_path):
+            check_paths = folders
+
+        missing = [p for p in check_paths if not os.path.exists(p)]
+        if missing:
+            if len(missing) == 1:
+                msg = f"{missing[0]} does not exist. Save anyway?"
+            else:
+                msg = "The following folders do not exist:\n" + "\n".join(missing) + "\n\nSave anyway?"
             if not messagebox.askyesno(
                 "App Launcher",
-                f"{check_path} does not exist. Save anyway?",
+                msg,
                 parent=root,
             ):
                 return
