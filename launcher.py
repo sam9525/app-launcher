@@ -25,7 +25,14 @@ FOREGROUND_RETRY_DELAY = 0.25
 TERMINAL_PROCESS = "windowsterminal.exe"
 EXPLORER_PROCESS = "explorer.exe"
 MAX_EXPLORER_FOLDERS = 6  # first tab + 5 more; caps focus-steal time
-EXPLORER_TAB_DELAY = 0.4  # ponytail: fixed sleep between tab keystrokes; the flaky knob
+# Predefined delays between the tab keystrokes. The one that matters most is
+# TAB_OPEN: a freshly Ctrl+T'd tab lands on "Home" and isn't ready for address-
+# bar input for a moment — too short and the tab stays blank. Tune upward if
+# folders still land on Home (slower machine / heavier Explorer).
+EXPLORER_WINDOW_READY_DELAY = 1.0  # window open -> input-ready before 1st Ctrl+T
+EXPLORER_TAB_OPEN_DELAY = 1.0  # after Ctrl+T: let the new tab become input-ready
+EXPLORER_FOCUS_DELAY = 0.4  # after Ctrl+L: let the address bar take focus
+EXPLORER_NAV_DELAY = 0.6  # after Enter: let the folder load before the next tab
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
 
 # ponytail: global lock; fine for a single user mashing one hotkey
@@ -129,7 +136,7 @@ def _handle_entry(entry: dict, pid_names: dict) -> str | None:
         if len(folders) > MAX_EXPLORER_FOLDERS:
             notes.append(f"capped to {MAX_EXPLORER_FOLDERS} folders")
         if sent < len(capped) - 1:
-            notes.append(f"{len(capped) - 1 - sent} tab(s) not added")
+            notes.append(f"{len(capped) - 1 - sent} tab(s) not sent")
         return "; ".join(notes) or None
 
     # Regular apps: find-or-launch by process basename, reposition every press.
@@ -306,16 +313,19 @@ def _send_explorer_tabs(hwnd: int, folders: list) -> int:
     sent = 0
     pythoncom.CoInitialize()
     try:
-        shell = win32com.client.Dispatch("WScript.Shell")
+        keys = win32com.client.Dispatch("WScript.Shell")
+        # the window just opened via explorer.exe — let it settle before the
+        # first Ctrl+T, or that tab races the window's own initial load
+        time.sleep(EXPLORER_WINDOW_READY_DELAY)
         for path in folders:
             if not _confirm_foreground(hwnd):
                 break
-            shell.SendKeys("^t")  # new tab
-            time.sleep(EXPLORER_TAB_DELAY)
-            shell.SendKeys("^l")  # focus address bar
-            time.sleep(EXPLORER_TAB_DELAY)
-            shell.SendKeys(_sendkeys_escape(path) + "{ENTER}")
-            time.sleep(EXPLORER_TAB_DELAY)
+            keys.SendKeys("^t")  # new tab (lands on Home)
+            time.sleep(EXPLORER_TAB_OPEN_DELAY)
+            keys.SendKeys("^l")  # focus the address bar
+            time.sleep(EXPLORER_FOCUS_DELAY)
+            keys.SendKeys(_sendkeys_escape(path) + "{ENTER}")
+            time.sleep(EXPLORER_NAV_DELAY)
             sent += 1
     finally:
         pythoncom.CoUninitialize()
