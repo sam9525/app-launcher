@@ -22,6 +22,7 @@ import app_index
 import config
 import launcher
 import monitors
+import zone_preview
 
 _ui_thread: threading.Thread | None = None
 _root: ctk.CTk | None = None
@@ -38,6 +39,12 @@ _PANEL_W = 340
 
 _ACCENT = "#4a90d9"  # fallback; replaced at runtime by the Windows accent color
 _TILE_BORDER = ("gray75", "gray30")  # (light, dark) default tile border
+
+
+def _resolve(pair):
+    """Pick the light or dark member of a CTk [light, dark] color pair for the
+    current appearance mode — tk.Canvas needs a concrete bg color."""
+    return pair[0] if ctk.get_appearance_mode() == "Light" else pair[1]
 
 
 def _system_accent() -> str:
@@ -189,7 +196,9 @@ def _icon_image(entry: dict, dimmed: bool = False) -> ctk.CTkImage:
     return img
 
 
-def _make_block(parent, entry: dict, command, on_toggle, on_open) -> ctk.CTkFrame:
+def _make_block(
+    parent, entry: dict, command, on_toggle, on_open, mons, accent
+) -> ctk.CTkFrame:
     enabled = entry.get("enabled", True)
     wrap = ctk.CTkFrame(parent, fg_color="transparent")
     f = ctk.CTkFrame(
@@ -215,6 +224,16 @@ def _make_block(parent, entry: dict, command, on_toggle, on_open) -> ctk.CTkFram
     sw = ctk.CTkSwitch(wrap, text="", width=40, command=on_toggle)
     (sw.select if enabled else sw.deselect)()
     sw.pack(pady=(6, 2))
+    zone_preview.build_map(
+        wrap,
+        mons,
+        entry.get("monitor", 1),
+        entry.get("zone", "maximized"),
+        width=_BLOCK,
+        height=30,
+        accent=accent,
+        bg=_resolve(ctk.ThemeManager.theme["CTk"]["fg_color"]),
+    ).pack(pady=(4, 2))
     ctk.CTkButton(wrap, text="Open", width=_BLOCK, height=24, command=on_open).pack()
 
     def on_enter(_e):
@@ -271,6 +290,8 @@ def _run() -> None:
     cfg.setdefault("entries", [])
     cfg.setdefault("theme", "system")
 
+    mons = monitors.get_monitors()
+
     ctk.set_appearance_mode(cfg.get("theme", "system"))
     ctk.set_default_color_theme("blue")
     _ACCENT = _system_accent()
@@ -304,6 +325,7 @@ def _run() -> None:
         cfg["theme"] = theme_var.get()
         config.save(cfg)
         ctk.set_appearance_mode(cfg["theme"])
+        refresh()
 
     ctk.CTkSwitch(
         top,
@@ -348,6 +370,8 @@ def _run() -> None:
                 lambda i=i: load_panel(i),
                 lambda i=i: toggle_at(i),
                 lambda e=entry: open_one(e),
+                mons,
+                _ACCENT,
             )
             block.grid(row=i // cols, column=i % cols, padx=_PAD, pady=_PAD)
         n = len(cfg["entries"])
@@ -476,16 +500,42 @@ def _run() -> None:
         ctk.CTkButton(body, text="…", width=30, command=browse_dir),
     ) + add_row(6, "Startup command", ctk.CTkEntry(body, textvariable=cmd_var))
 
-    monitor_count = max(1, len(monitors.get_monitors()))
-    mon_values = [str(i) for i in range(1, max(monitor_count, 9) + 1)]
-    add_row(
-        7,
-        "Monitor",
-        ctk.CTkOptionMenu(body, values=mon_values, variable=mon_var, width=70),
-    )
-    add_row(
-        8, "Zone", ctk.CTkOptionMenu(body, values=list(config.ZONES), variable=zone_var)
-    )
+    monitor_count = max(1, len(mons))
+    mon_values = [str(i) for i in range(1, monitor_count + 1)]
+    mon_menu = ctk.CTkOptionMenu(body, values=mon_values, variable=mon_var, width=70)
+    add_row(7, "Monitor", mon_menu)
+    zone_menu = ctk.CTkOptionMenu(body, values=list(config.ZONES), variable=zone_var)
+    add_row(8, "Zone", zone_menu)
+
+    map_holder = ctk.CTkFrame(body, fg_color="transparent")
+    map_holder.grid(row=9, column=0, columnspan=3, sticky="we", pady=(8, 0))
+
+    def redraw_map():
+        for w in map_holder.winfo_children():
+            w.destroy()
+        try:
+            mon = max(1, int(mon_var.get()))
+        except ValueError:
+            mon = 1
+        zone_preview.build_map(
+            map_holder,
+            mons,
+            mon,
+            zone_var.get(),
+            width=_PANEL_W - 40,
+            height=72,
+            accent=_ACCENT,
+            bg=_resolve(ctk.ThemeManager.theme["CTkFrame"]["fg_color"]),
+            on_pick=on_pick_zone,
+        ).pack()
+
+    def on_pick_zone(mon, zone):
+        mon_var.set(str(mon))
+        zone_var.set(zone)
+        redraw_map()
+
+    mon_menu.configure(command=lambda _v: redraw_map())
+    zone_menu.configure(command=lambda _v: redraw_map())
 
     def update_kind():
         is_app = kind_seg.get() == "App"
@@ -559,7 +609,7 @@ def _run() -> None:
         close_panel()
 
     btns = ctk.CTkFrame(body, fg_color="transparent")
-    btns.grid(row=9, column=0, columnspan=3, sticky="we", pady=(12, 0))
+    btns.grid(row=10, column=0, columnspan=3, sticky="we", pady=(12, 0))
     save_btn = ctk.CTkButton(btns, text="Save", width=70, command=save_entry)
     toggle_btn = ctk.CTkButton(btns, text="Disable", width=70, command=toggle_entry)
     remove_btn = ctk.CTkButton(
@@ -587,6 +637,7 @@ def _run() -> None:
         mon_var.set(str(e.get("monitor", 1)))
         zone_var.set(e.get("zone", "maximized"))
         update_kind()
+        redraw_map()
         toggle_btn.pack_forget()
         remove_btn.pack_forget()
         if i is not None:
