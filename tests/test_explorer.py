@@ -16,8 +16,15 @@ def test_cap_constant_is_six():
     assert launcher.MAX_EXPLORER_FOLDERS == 6
 
 
+def test_handle_entry_empty_folders_returns_note():
+    # Empty folders short-circuits before any Win32 call.
+    note = launcher._handle_entry({"kind": "explorer", "folders": []}, {})
+    assert note == "no folders configured"
+
+
 if __name__ == "__main__":
     test_parse_folder_lines_strips_blanks_and_whitespace()
     test_parse_folder_lines_empty()
     test_cap_constant_is_six()
+    test_handle_entry_empty_folders_returns_note()
     print("ok")
