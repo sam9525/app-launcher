@@ -1,5 +1,7 @@
 """pystray icon/menu + RegisterHotKey message loop (runs on a daemon thread)."""
 
+import os
+import sys
 import threading
 
 import pystray
@@ -43,10 +45,25 @@ def _on_exit(icon, item=None):
     icon.stop()
 
 
+def asset_path(name: str) -> str:
+    # sys._MEIPASS is set in the PyInstaller build; assets are bundled there
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "assets", name)
+
+
+ICON_FILE = "app-launcher-icon.ico"
+
+
+def _icon_image() -> Image.Image:
+    try:
+        return Image.open(asset_path(ICON_FILE))
+    except (FileNotFoundError, OSError):
+        # ponytail: fall back to a solid square so a missing asset never kills the tray
+        return Image.new("RGB", (16, 16), (45, 125, 210))
+
+
 def make_icon() -> pystray.Icon:
-    image = Image.new(
-        "RGB", (16, 16), (45, 125, 210)
-    )  # solid square, no asset to maintain
+    image = _icon_image()
     menu = pystray.Menu(
         pystray.MenuItem("Launch", _launch_async, default=True),
         pystray.MenuItem("Settings", _open_settings),

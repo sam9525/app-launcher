@@ -20,3 +20,9 @@ CONTEXT.md
 
 # Superpowers
 .superpowers/
+
+# PyInstaller / Inno Setup build output
+build/
+dist/
+*.spec
+installer/Output/

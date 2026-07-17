@@ -22,6 +22,7 @@ import app_index
 import config
 import launcher
 import monitors
+import tray
 import zone_preview
 
 _ui_thread: threading.Thread | None = None
@@ -302,6 +303,10 @@ def _run() -> None:
     root = ctk.CTk()
     _root = root
     root.title("App Launcher — Settings")
+    try:
+        root.iconbitmap(tray.asset_path(tray.ICON_FILE))
+    except tk.TclError:
+        pass  # missing/unreadable asset: keep default Tk icon
     root.geometry("720x480")
     root.minsize(480, 320)
     root.bind("<<Lift>>", lambda e: (root.deiconify(), root.lift(), root.focus_force()))
@@ -363,6 +368,7 @@ def _run() -> None:
                 launcher._handle_entry(entry, {})
             finally:
                 launcher._run_lock.release()
+
         threading.Thread(target=target, daemon=True).start()
 
     def refresh():
@@ -563,7 +569,11 @@ def _run() -> None:
 
     def update_kind():
         kind = kind_seg.get()
-        sets = {"App": app_widgets, "Terminal": terminal_widgets, "Explorer": explorer_widgets}
+        sets = {
+            "App": app_widgets,
+            "Terminal": terminal_widgets,
+            "Explorer": explorer_widgets,
+        }
         for name, widgets in sets.items():
             for w in widgets:
                 w.grid() if name == kind else w.grid_remove()
@@ -581,7 +591,9 @@ def _run() -> None:
             monitor = 1
         i = state["index"]
         old = cfg["entries"][i] if i is not None else {}
-        kind = {"App": "app", "Terminal": "terminal", "Explorer": "explorer"}[kind_seg.get()]
+        kind = {"App": "app", "Terminal": "terminal", "Explorer": "explorer"}[
+            kind_seg.get()
+        ]
         entry = {
             "name": name,
             "enabled": old.get("enabled", True),
@@ -614,7 +626,11 @@ def _run() -> None:
             if len(missing) == 1:
                 msg = f"{missing[0]} does not exist. Save anyway?"
             else:
-                msg = "The following folders do not exist:\n" + "\n".join(missing) + "\n\nSave anyway?"
+                msg = (
+                    "The following folders do not exist:\n"
+                    + "\n".join(missing)
+                    + "\n\nSave anyway?"
+                )
             if not messagebox.askyesno(
                 "App Launcher",
                 msg,
