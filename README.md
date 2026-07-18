@@ -1,8 +1,10 @@
 # App Launcher
 
-A Windows-only Python tray app: one hotkey (`Ctrl+Alt+L` by default) finds-or-launches a configured set of apps and terminals, then positions each into a monitor zone.
+A Windows-only Python tray app: one hotkey (`Ctrl+Alt+L` by default) finds-or-launches a configured set of apps, terminals, and Explorer folder groups, then positions each into a monitor zone.
 
 ## Install & Run
+
+Run `AppLauncher-Setup.exe`, or from source:
 
 ```
 pip install -r requirements.txt
@@ -13,9 +15,11 @@ Requires Windows, Python 3.10+, and Windows Terminal (`wt.exe`) for terminal ent
 
 ## Usage
 
-- **Hotkey** or tray icon **Launch**: for each configured entry, find its window by process name (or launch it), then move it to its zone. Press again to re-tile.
-- Tray icon **Settings**: edit entries and the hotkey in a small Tkinter UI.
+- **Hotkey** or tray icon **Launch**: for each enabled entry, find its window by process name (or launch it), then move it to its zone. Press again to re-tile.
+- Tray icon **Settings**: edit entries and the hotkey. Each entry is a tile with an enable switch, an **Open** button, and a preview of which monitor and zone it lands in.
 - Tray icon **Exit**: quit.
+
+Settings also has a **theme** selector (`system` follows the Windows apps theme and accent colour) and a **Run at startup** toggle, which is turned on the first time the app runs.
 
 ## Configuration
 
@@ -24,6 +28,7 @@ Stored at `%APPDATA%\AppLauncher\config.json` (edit via Settings or by hand):
 ```json
 {
   "hotkey": "ctrl+alt+l",
+  "theme": "system",
   "entries": [
     {
       "name": "Editor",
@@ -32,7 +37,8 @@ Stored at `%APPDATA%\AppLauncher\config.json` (edit via Settings or by hand):
       "args": "",
       "match_process": "editor.exe",
       "monitor": 1,
-      "zone": "left-half"
+      "zone": "left-half",
+      "enabled": true
     },
     {
       "name": "Shell",
@@ -41,14 +47,26 @@ Stored at `%APPDATA%\AppLauncher\config.json` (edit via Settings or by hand):
       "startup_command": "git status",
       "monitor": 2,
       "zone": "right-half"
+    },
+    {
+      "name": "Project folders",
+      "kind": "explorer",
+      "folders": ["D:\\data", "D:\\data\\Program"],
+      "monitor": 2,
+      "zone": "bottom-half"
     }
   ]
 }
 ```
 
-- `kind`: `"app"` (launched from `path`, matched by `match_process`) or `"terminal"` (spawned via `wt.exe -d workdir`; optional `startup_command` is typed into the new terminal).
+- `kind`:
+  - `"app"` — launched from `path`, matched by `match_process`.
+  - `"terminal"` — spawned via `wt.exe -d workdir`; optional `startup_command` is typed into the new terminal.
+  - `"explorer"` — first folder in `folders` opens a window, the rest become tabs in it (capped at 6 folders; extras are reported as a note).
 - `monitor`: 1-indexed; out-of-range falls back to the primary monitor.
-- `zone`: `maximized`, `left-half`, `right-half`, `top-half`, `bottom-half`, `top-left`, `top-right`, `bottom-left`, `bottom-right`.
+- `zone`: `maximized`, `left-half`, `right-half`, `top-half`, `bottom-half`, `top-left`, `top-right`, `bottom-left`, `bottom-right`, or `open-only` (launch without positioning).
+- `enabled`: defaults to `true`; disabled entries are skipped on launch.
+- `theme` (top level): `system`, `light`, or `dark`.
 
 A corrupt config is backed up as `config.json.bad` and replaced with an empty default, and Settings opens automatically.
 
@@ -63,10 +81,12 @@ Pure-Python tests only (zone math, config I/O) — no Win32 mocking.
 ## Layout
 
 ```
-main.py         entry: DPI awareness, single-instance mutex, hotkey thread, tray loop
-config.py       load/save config.json
-monitors.py     monitor enumeration + zone→rect math
-launcher.py     find-or-launch-then-position core
-tray.py         tray icon/menu + global hotkey message loop
-settings_ui.py  Tkinter entry editor
+main.py          entry: DPI awareness, single-instance mutex, hotkey thread, tray loop
+config.py        load/save config.json, run-at-startup + Windows theme registry
+monitors.py      monitor enumeration + zone→rect math
+launcher.py      find-or-launch-then-position core
+tray.py          tray icon/menu + global hotkey message loop
+settings_ui.py   CustomTkinter entry editor
+zone_preview.py  monitor/zone preview map drawn on the entry tiles
+app_index.py     installed-app lookup for the entry picker
 ```
