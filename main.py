@@ -31,6 +31,10 @@ def main() -> None:
 
     if was_reset:  # missing/corrupt config: get the user straight into Settings
         try:
+            config.set_run_at_startup(True)  # first run defaults to run-at-startup
+        except OSError:
+            pass  # registry unavailable: user can still toggle it in Settings
+        try:
             import settings_ui
 
             settings_ui.open_settings()

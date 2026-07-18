@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import winreg
 from pathlib import Path
 
@@ -40,6 +41,40 @@ def save(cfg: dict) -> None:
     tmp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".tmp")
     tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     os.replace(tmp, CONFIG_PATH)
+
+
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_RUN_VALUE = "AppLauncher"  # same name the installer's startup task uses
+
+
+def _startup_command() -> str:
+    exe = sys.executable
+    if getattr(sys, "frozen", False):  # PyInstaller build: exe is the app itself
+        return f'"{exe}"'
+    main = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main.py")
+    return f'"{exe}" "{main}"'
+
+
+def is_run_at_startup() -> bool:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as k:
+            winreg.QueryValueEx(k, _RUN_VALUE)
+        return True
+    except OSError:
+        return False
+
+
+def set_run_at_startup(enabled: bool) -> None:
+    with winreg.OpenKey(
+        winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE
+    ) as k:
+        if enabled:
+            winreg.SetValueEx(k, _RUN_VALUE, 0, winreg.REG_SZ, _startup_command())
+        else:
+            try:
+                winreg.DeleteValue(k, _RUN_VALUE)
+            except FileNotFoundError:
+                pass
 
 
 _PERSONALIZE = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
