@@ -343,6 +343,18 @@ def _run() -> None:
         command=on_theme_toggle,
     ).pack(side="right", padx=(0, 8))
 
+    startup_var = tk.BooleanVar(value=config.is_run_at_startup())
+
+    def on_startup_toggle():
+        config.set_run_at_startup(startup_var.get())
+
+    ctk.CTkSwitch(
+        top,
+        text="Run at startup",
+        variable=startup_var,
+        command=on_startup_toggle,
+    ).pack(side="right", padx=(0, 8))
+
     host = ctk.CTkFrame(root, fg_color="transparent")
     host.pack(fill="both", expand=True)
 
