@@ -13,6 +13,8 @@ from version import VERSION
 LATEST_URL = "https://api.github.com/repos/sam9525/app-launcher/releases/latest"
 RELEASES_PREFIX = "https://github.com/sam9525/app-launcher/releases/"
 CHECK_INTERVAL = 24 * 60 * 60
+# At login the network is often not up yet; a check now would burn the day's attempt.
+STARTUP_DELAY = 90
 STAMP_PATH = Path(os.environ["APPDATA"]) / "AppLauncher" / "update-check.json"
 
 _EMPTY_STAMP = {"checked_at": 0.0, "latest_tag": None, "latest_url": None}
@@ -100,7 +102,9 @@ def run_due_check(on_newer: Callable[[str, str], None], now: float) -> float:
     if 0 <= elapsed < CHECK_INTERVAL:
         return CHECK_INTERVAL - elapsed
     if elapsed < 0:
-        # A stamp from the future (clock change) must not block checks for long.
+        # A stamp from the future (clock change) must not block checks for long:
+        # rewrite it so the next check is due one interval from now.
+        save_stamp(now, stamp["latest_tag"], stamp["latest_url"])
         return CHECK_INTERVAL
 
     result = fetch_latest()
@@ -121,6 +125,7 @@ def watch(on_newer: Callable[[str, str], None]) -> None:
     except Exception:
         # The watcher thread must outlive any failure, including the callback's.
         pass
+    time.sleep(STARTUP_DELAY)
     while True:
         try:
             wait = run_due_check(on_newer, time.time())

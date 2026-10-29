@@ -117,6 +117,9 @@ def test_future_stamp_waits_one_interval():
         with mock.patch.object(updates, "fetch_latest") as fetch:
             assert updates.run_due_check(cb, NOW) == updates.CHECK_INTERVAL
         fetch.assert_not_called()
+        with mock.patch.object(updates, "fetch_latest", return_value=None) as fetch:
+            updates.run_due_check(cb, NOW + updates.CHECK_INTERVAL)
+        fetch.assert_called_once()
 
 
 def test_fetch_incomplete_read_is_none():
@@ -160,7 +163,28 @@ def test_watch_survives_callback_error():
             updates.watch(mock.Mock())
         except StopTest:
             pass
-    assert sleeps == [updates.CHECK_INTERVAL]
+    assert sleeps == [updates.STARTUP_DELAY, updates.CHECK_INTERVAL]
+
+
+def test_watch_waits_before_first_check():
+    events = []
+
+    def record_check(on_newer, now):
+        events.append("check")
+        raise StopTest
+
+    with mock.patch.object(
+        updates, "saved_newer", return_value=None
+    ), mock.patch.object(
+        updates, "run_due_check", side_effect=record_check
+    ), mock.patch(
+        "time.sleep", side_effect=lambda s: events.append(("sleep", s))
+    ):
+        try:
+            updates.watch(mock.Mock())
+        except StopTest:
+            pass
+    assert events == [("sleep", updates.STARTUP_DELAY), "check"]
 
 
 def test_parse_rejects_odd_digits():
@@ -184,5 +208,6 @@ if __name__ == "__main__":
     test_overflow_stamp_is_empty()
     test_infinite_stamp_is_empty()
     test_watch_survives_callback_error()
+    test_watch_waits_before_first_check()
     test_parse_rejects_odd_digits()
     print("test_updates OK")

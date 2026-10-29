@@ -48,10 +48,17 @@ def test_open_release_opens_url():
 
 
 def test_watch_thread_is_daemon():
-    with mock.patch("threading.Thread") as T:
-        tray.start_update_watch(mock.MagicMock())
-    assert T.call_args.kwargs["daemon"] is True
-    assert T.call_args.kwargs["target"] is updates.watch
+    tray._update = None
+    try:
+        with mock.patch("threading.Thread") as T:
+            tray.start_update_watch(mock.MagicMock())
+        assert T.call_args.kwargs["daemon"] is True
+        assert T.call_args.kwargs["target"] is updates.watch
+        T.return_value.start.assert_called_once()
+        T.call_args.kwargs["args"][0]("v0.3.0", URL)
+        assert tray._update == ("v0.3.0", URL)
+    finally:
+        tray._update = None
 
 
 if __name__ == "__main__":
