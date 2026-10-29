@@ -4,6 +4,7 @@ import ctypes
 import os
 import shlex
 import subprocess
+import sys
 import threading
 import time
 from ctypes import wintypes
@@ -211,15 +212,30 @@ def _handle_entry(entry: dict, pid_names: dict) -> str | None:
     return None
 
 
+def _child_env() -> dict[str, str]:
+    """os.environ minus the Tcl/Tk paths PyInstaller points into its _MEI folder,
+    which is deleted on exit and breaks Tk in anything launched from here."""
+    env = dict(os.environ)
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle:
+        for name in ("TCL_LIBRARY", "TK_LIBRARY"):
+            if env.get(name, "").lower().startswith(bundle.lower()):
+                del env[name]
+    return env
+
+
 def _spawn(entry: dict) -> bool:
     """Starts the entry. True only if it had to be launched elevated via UAC."""
+    env = _child_env()
     if entry.get("kind") == "terminal":
-        subprocess.Popen(["wt.exe", "-d", entry["workdir"]])
+        subprocess.Popen(["wt.exe", "-d", entry["workdir"]], env=env)
     elif entry.get("kind") == "explorer":
-        subprocess.Popen(["explorer.exe", entry["folders"][0]])
+        subprocess.Popen(["explorer.exe", entry["folders"][0]], env=env)
     else:
         try:
-            subprocess.Popen([entry["path"]] + shlex.split(entry.get("args", "")))
+            subprocess.Popen(
+                [entry["path"]] + shlex.split(entry.get("args", "")), env=env
+            )
         except OSError as exc:
             if exc.winerror != ERROR_ELEVATION_REQUIRED:
                 raise
