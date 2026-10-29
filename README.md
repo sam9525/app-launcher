@@ -82,10 +82,6 @@ python -m pytest tests/
 
 Covers zone math, config I/O, launch and spawn behaviour, the update check, and the Settings window and tray (some tests mock Win32 and Tk calls).
 
-## Releasing
-
-See [RELEASING.md](RELEASING.md) for the checklist and [CHANGELOG.md](CHANGELOG.md) for release notes.
-
 ## Layout
 
 ```
