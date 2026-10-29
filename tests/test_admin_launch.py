@@ -13,7 +13,7 @@ import launcher
 
 ENTRY = {
     "name": "Tool",
-    "path": r"C:		ool.exe",
+    "path": r"C:\Tools\tool.exe",
     "args": '-a "b c"',
     "match_process": "tool.exe",
     "monitor": 1,
@@ -48,13 +48,14 @@ def _err740():
 
 
 def test_spawn_falls_back_to_runas_on_740():
+    entry = {**ENTRY, "args": "-a 'b c'"}  # normalises to -a "b c"
     with mock.patch("subprocess.Popen", side_effect=_err740()), mock.patch.object(
         launcher.shell, "ShellExecuteEx"
     ) as sx:
-        assert launcher._spawn(ENTRY) is True
+        assert launcher._spawn(entry) is True
     kw = sx.call_args.kwargs
     assert kw["lpVerb"] == "runas"
-    assert kw["lpFile"] == ENTRY["path"]
+    assert kw["lpFile"] == entry["path"]
     assert kw["lpParameters"] == '-a "b c"'
 
 

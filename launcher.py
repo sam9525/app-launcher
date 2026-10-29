@@ -227,7 +227,9 @@ def _spawn(entry: dict) -> bool:
                 fMask=SEE_MASK_NOASYNC,
                 lpVerb="runas",
                 lpFile=entry["path"],
-                lpParameters=entry.get("args", ""),
+                lpParameters=subprocess.list2cmdline(
+                    shlex.split(entry.get("args", ""))
+                ),
                 nShow=win32con.SW_SHOWNORMAL,
             )
             return True
