@@ -9,11 +9,13 @@ import time
 from ctypes import wintypes
 
 import pythoncom
+import pywintypes
 import win32api
 import win32com.client
 import win32con
 import win32gui
 import win32process
+from win32com.shell import shell
 
 import config
 import monitors
@@ -38,6 +40,9 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000  # works on elevated processes too
 TOKEN_QUERY = 0x0008
 TOKEN_ELEVATION_CLASS = 20  # TOKEN_INFORMATION_CLASS.TokenElevation
 _MAX_PATH_CHARS = 32768
+ERROR_ELEVATION_REQUIRED = 740
+ERROR_CANCELLED = 1223  # user declined the UAC prompt
+SEE_MASK_NOASYNC = 0x00000100  # absent from pywin32 shellcon
 
 # Private DLL handles: argtypes (64-bit HANDLEs) must not leak into ctypes.windll.
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -79,6 +84,12 @@ _launched_terminals: set = set()
 # Explorer groups launched once per run, keyed (name, tuple(folders)).
 # ponytail: in-memory set, no persistence — a fresh run reopens windows
 _launched_explorers: set = set()
+
+# Admin apps launched once per run, keyed (name, path). Their windows are never
+# positioned (the launcher can't move an elevated window), so a second press
+# must not raise another UAC prompt.
+# ponytail: in-memory set, no persistence — a fresh run asks for approval again
+_launched_admin: set = set()
 
 
 def _terminal_key(entry: dict) -> tuple:
@@ -176,24 +187,51 @@ def _handle_entry(entry: dict, pid_names: dict) -> str | None:
     proc_name = entry["match_process"]
     hwnd = _find_window(proc_name, pid_names)
     if hwnd:
-        _position(hwnd, monitor, zone)
+        if not _window_is_elevated(hwnd):
+            _position(hwnd, monitor, zone)
+        return None
+    admin_key = (entry.get("name"), entry.get("path"))
+    if admin_key in _launched_admin:
         return None
     before = set(_windows_for(proc_name, pid_names))
-    _spawn(entry)
+    try:
+        elevated = _spawn(entry)
+    except pywintypes.error as exc:
+        if exc.winerror == ERROR_CANCELLED:
+            return "admin approval declined"
+        raise
+    if elevated:
+        _launched_admin.add(admin_key)
+        return None
     hwnd = _poll_new_window(proc_name, before, pid_names)
     if hwnd is None:
         return "unpositioned (no window within 15 s)"
-    _position(hwnd, monitor, zone)
+    if not _window_is_elevated(hwnd):
+        _position(hwnd, monitor, zone)
     return None
 
 
-def _spawn(entry: dict) -> None:
+def _spawn(entry: dict) -> bool:
+    """Starts the entry. True only if it had to be launched elevated via UAC."""
     if entry.get("kind") == "terminal":
         subprocess.Popen(["wt.exe", "-d", entry["workdir"]])
     elif entry.get("kind") == "explorer":
         subprocess.Popen(["explorer.exe", entry["folders"][0]])
     else:
-        subprocess.Popen([entry["path"]] + shlex.split(entry.get("args", "")))
+        try:
+            subprocess.Popen([entry["path"]] + shlex.split(entry.get("args", "")))
+        except OSError as exc:
+            if exc.winerror != ERROR_ELEVATION_REQUIRED:
+                raise
+            shell.ShellExecuteEx(
+                fMask=SEE_MASK_NOASYNC,
+                lpVerb="runas",
+                lpFile=entry["path"],
+                lpParameters=entry.get("args", ""),
+                nShow=win32con.SW_SHOWNORMAL,
+            )
+            return True
+    return False
 
 
 def _process_basename(pid: int, pid_names: dict) -> str | None:
