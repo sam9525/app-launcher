@@ -34,6 +34,39 @@ EXPLORER_TAB_OPEN_DELAY = 1.0  # after Ctrl+T: let the new tab become input-read
 EXPLORER_FOCUS_DELAY = 0.4  # after Ctrl+L: let the address bar take focus
 EXPLORER_NAV_DELAY = 0.6  # after Enter: let the folder load before the next tab
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000  # works on elevated processes too
+TOKEN_QUERY = 0x0008
+TOKEN_ELEVATION_CLASS = 20  # TOKEN_INFORMATION_CLASS.TokenElevation
+_MAX_PATH_CHARS = 32768
+
+# Private DLL handles: argtypes (64-bit HANDLEs) must not leak into ctypes.windll.
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+_kernel32.OpenProcess.restype = wintypes.HANDLE
+_kernel32.QueryFullProcessImageNameW.argtypes = [
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    wintypes.LPWSTR,
+    ctypes.POINTER(wintypes.DWORD),
+]
+_kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+_kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+_kernel32.CloseHandle.restype = wintypes.BOOL
+_advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+_advapi32.OpenProcessToken.argtypes = [
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    ctypes.POINTER(wintypes.HANDLE),
+]
+_advapi32.OpenProcessToken.restype = wintypes.BOOL
+_advapi32.GetTokenInformation.argtypes = [
+    wintypes.HANDLE,
+    ctypes.c_int,
+    wintypes.LPVOID,
+    wintypes.DWORD,
+    ctypes.POINTER(wintypes.DWORD),
+]
+_advapi32.GetTokenInformation.restype = wintypes.BOOL
 
 # ponytail: global lock; fine for a single user mashing one hotkey
 _run_lock = threading.Lock()
@@ -165,18 +198,55 @@ def _spawn(entry: dict) -> None:
 
 def _process_basename(pid: int, pid_names: dict) -> str | None:
     if pid not in pid_names:
-        try:
-            handle = win32api.OpenProcess(
-                win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-            )
+        pid_names[pid] = None  # stays None if the process can't be queried
+        handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
             try:
-                path = win32process.GetModuleFileNameEx(handle, 0)
+                buf = ctypes.create_unicode_buffer(_MAX_PATH_CHARS)
+                size = wintypes.DWORD(len(buf))
+                if _kernel32.QueryFullProcessImageNameW(
+                    handle, 0, buf, ctypes.byref(size)
+                ):
+                    pid_names[pid] = os.path.basename(buf.value).lower()
             finally:
-                handle.close()  # type: ignore[attr-defined]  # stub types handle as int
-            pid_names[pid] = os.path.basename(path).lower()
-        except Exception:  # elevated processes refuse OpenProcess — skip them
-            pid_names[pid] = None
+                _kernel32.CloseHandle(handle)
     return pid_names[pid]
+
+
+def _is_elevated(pid: int) -> bool:
+    """True if the process runs elevated. Fails safe: any error counts as elevated."""
+    process = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not process:
+        return True
+    try:
+        token = wintypes.HANDLE()
+        if not _advapi32.OpenProcessToken(process, TOKEN_QUERY, ctypes.byref(token)):
+            return True
+        try:
+            elevation = wintypes.DWORD()
+            returned = wintypes.DWORD()
+            if not _advapi32.GetTokenInformation(
+                token,
+                TOKEN_ELEVATION_CLASS,
+                ctypes.byref(elevation),
+                ctypes.sizeof(elevation),
+                ctypes.byref(returned),
+            ):
+                return True
+            return bool(elevation.value)
+        finally:
+            _kernel32.CloseHandle(token)
+    finally:
+        _kernel32.CloseHandle(process)
+
+
+def _window_is_elevated(hwnd: int) -> bool:
+    """True if the window's process is elevated; errors count as elevated."""
+    try:
+        _tid, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return _is_elevated(pid)
+    except Exception:
+        return True
 
 
 def _windows_for(process_name: str, pid_names: dict) -> list[int]:
