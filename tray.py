@@ -3,6 +3,7 @@
 import os
 import sys
 import threading
+import webbrowser
 
 import pystray
 import win32con
@@ -11,6 +12,7 @@ from PIL import Image
 
 import config
 import launcher
+import updates
 
 HOTKEY_ID = 1
 _MODS = {
@@ -19,6 +21,32 @@ _MODS = {
     "shift": win32con.MOD_SHIFT,
     "win": win32con.MOD_WIN,
 }
+
+
+_update: tuple[str, str] | None = None
+
+
+def _on_newer(icon, tag: str, url: str) -> None:
+    global _update
+    if _update is not None and _update[0] == tag:
+        return  # watch() may report the same tag twice per run
+    _update = (tag, url)
+    icon.update_menu()
+    icon.notify(f"App Launcher {tag} is available. Open it from the tray menu.")
+
+
+def _open_release(icon, item=None) -> None:
+    if _update:
+        webbrowser.open(_update[1])
+
+
+def start_update_watch(icon) -> None:
+    icon.visible = True  # pystray does not show the icon itself when setup is given
+    threading.Thread(
+        target=updates.watch,
+        args=(lambda tag, url: _on_newer(icon, tag, url),),
+        daemon=True,
+    ).start()
 
 
 def _launch_async(icon, item=None):
@@ -67,6 +95,11 @@ def make_icon() -> pystray.Icon:
     menu = pystray.Menu(
         pystray.MenuItem("Launch", _launch_async, default=True),
         pystray.MenuItem("Settings", _open_settings),
+        pystray.MenuItem(
+            lambda item: f"Update available ({_update[0]})" if _update else "",
+            _open_release,
+            visible=lambda item: _update is not None,
+        ),
         pystray.MenuItem("Exit", _on_exit),
     )
     return pystray.Icon("AppLauncher", image, "App Launcher", menu)

@@ -41,7 +41,9 @@ def main() -> None:
         except ImportError:
             pass  # settings_ui lands in the next task
 
-    icon.run()  # owns the main thread until Exit; `mutex` stays alive in this frame
+    icon.run(
+        setup=tray.start_update_watch
+    )  # owns the main thread until Exit; `mutex` stays alive in this frame
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ Requires Windows, Python 3.10+, and Windows Terminal (`wt.exe`) for terminal ent
 
 - **Hotkey** or tray icon **Launch**: for each enabled entry, find its window by process name (or launch it), then move it to its zone. Press again to re-tile.
 - Tray icon **Settings**: edit entries and the hotkey. Each entry is a tile with an enable switch, an **Open** button, and a preview of which monitor and zone it lands in.
+- Tray icon **Update available**: appears when a newer GitHub release exists (checked at startup and daily); click it to open the release page.
 - Tray icon **Exit**: quit.
 
 Settings also has a **theme** selector (`system` follows the Windows apps theme and accent colour) and a **Run at startup** toggle, which is turned on the first time the app runs.
