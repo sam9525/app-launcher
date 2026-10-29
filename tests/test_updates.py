@@ -1,4 +1,5 @@
 import contextlib
+import http.client
 import io
 import json
 import pathlib
@@ -118,6 +119,55 @@ def test_future_stamp_waits_one_interval():
         fetch.assert_not_called()
 
 
+def test_fetch_incomplete_read_is_none():
+    response = mock.MagicMock()
+    response.__enter__.return_value.read.side_effect = http.client.IncompleteRead(b"")
+    with mock.patch("urllib.request.urlopen", return_value=response):
+        assert updates.fetch_latest() is None
+
+
+def test_overflow_stamp_is_empty():
+    huge = "1" + "0" * 399
+    with stamp_file(
+        '{"checked_at": %s, "latest_tag": null, "latest_url": null}' % huge
+    ):
+        assert updates.load_stamp() == EMPTY
+
+
+def test_infinite_stamp_is_empty():
+    with stamp_file('{"checked_at": Infinity, "latest_tag": null, "latest_url": null}'):
+        assert updates.load_stamp() == EMPTY
+
+
+class StopTest(BaseException):
+    """Ends the endless watch loop; BaseException so watch cannot swallow it."""
+
+
+def test_watch_survives_callback_error():
+    sleeps = []
+    calls = []
+
+    def flaky_check(on_newer, now):
+        calls.append(now)
+        if len(calls) == 1:
+            raise RuntimeError("callback blew up")
+        raise StopTest
+
+    with stamp_file(), mock.patch.object(
+        updates, "run_due_check", side_effect=flaky_check
+    ), mock.patch("time.sleep", side_effect=sleeps.append):
+        try:
+            updates.watch(mock.Mock())
+        except StopTest:
+            pass
+    assert sleeps == [updates.CHECK_INTERVAL]
+
+
+def test_parse_rejects_odd_digits():
+    assert updates.parse_version("v1_0.2") is None
+    assert updates.parse_version("v+1.0.0") is None
+
+
 if __name__ == "__main__":
     test_is_newer()
     test_fetch_rejects_foreign_url()
@@ -130,4 +180,9 @@ if __name__ == "__main__":
     test_due_check_reports_and_saves()
     test_offline_keeps_saved_result()
     test_future_stamp_waits_one_interval()
+    test_fetch_incomplete_read_is_none()
+    test_overflow_stamp_is_empty()
+    test_infinite_stamp_is_empty()
+    test_watch_survives_callback_error()
+    test_parse_rejects_odd_digits()
     print("test_updates OK")

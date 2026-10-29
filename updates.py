@@ -1,6 +1,7 @@
 """Daily check of GitHub's latest release; standard library only."""
 
 import json
+import math
 import os
 import time
 import urllib.request
@@ -19,10 +20,10 @@ _EMPTY_STAMP = {"checked_at": 0.0, "latest_tag": None, "latest_url": None}
 
 def parse_version(tag: str) -> tuple[int, ...] | None:
     parts = tag.removeprefix("v").removeprefix("V").split(".")
-    try:
-        return tuple(int(p) for p in parts)
-    except ValueError:
+    # int() alone would accept " 1", "+1", "-1" and "1_0".
+    if not all(p.isascii() and p.isdigit() for p in parts):
         return None
+    return tuple(int(p) for p in parts)
 
 
 def is_newer(tag: str, current: str = VERSION) -> bool:
@@ -44,7 +45,9 @@ def fetch_latest() -> tuple[str, str] | None:
         with urllib.request.urlopen(request, timeout=10) as response:
             data = json.load(response)
         tag, url = data["tag_name"], data["html_url"]
-    except (OSError, ValueError, KeyError, TypeError):
+    except Exception:
+        # Any failure (IncompleteRead, RecursionError, ...) is a silent failed
+        # check; it must never escape and kill the watcher thread.
         return None
     if not isinstance(tag, str) or not isinstance(url, str):
         return None
@@ -58,7 +61,11 @@ def load_stamp() -> dict:
         data = json.loads(STAMP_PATH.read_text(encoding="utf-8"))
         checked_at = float(data["checked_at"])
         tag, url = data["latest_tag"], data["latest_url"]
-    except (OSError, ValueError, KeyError, TypeError):
+    except Exception:
+        # A bad stamp (OverflowError, RecursionError, ...) is treated as empty.
+        return dict(_EMPTY_STAMP)
+    if not math.isfinite(checked_at):
+        # Infinity would postpone checks forever; NaN breaks the comparison.
         return dict(_EMPTY_STAMP)
     if (
         not isinstance(tag, str)
@@ -107,8 +114,17 @@ def run_due_check(on_newer: Callable[[str, str], None], now: float) -> float:
 
 
 def watch(on_newer: Callable[[str, str], None]) -> None:
-    known = saved_newer()
-    if known:
-        on_newer(*known)
+    try:
+        known = saved_newer()
+        if known:
+            on_newer(*known)
+    except Exception:
+        # The watcher thread must outlive any failure, including the callback's.
+        pass
     while True:
-        time.sleep(run_due_check(on_newer, time.time()))
+        try:
+            wait = run_due_check(on_newer, time.time())
+        except Exception:
+            # Same reason: a failed round just waits a day instead of ending checks.
+            wait = CHECK_INTERVAL
+        time.sleep(wait)
