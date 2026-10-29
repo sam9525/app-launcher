@@ -16,15 +16,17 @@ Requires Windows, Python 3.10+, and Windows Terminal (`wt.exe`) for terminal ent
 ## Usage
 
 - **Hotkey** or tray icon **Launch**: for each enabled entry, find its window by process name (or launch it), then move it to its zone. Press again to re-tile.
-- Tray icon **Settings**: edit entries and the hotkey. Each entry is a tile with an enable switch, an **Open** button, and a preview of which monitor and zone it lands in.
+- Tray icon **Settings**: edit entries. Each entry is a tile with an enable switch, an **Open** button, and a preview of which monitor and zone it lands in.
 - Tray icon **Update available**: appears when a newer GitHub release exists (checked at startup and daily); click it to open the release page.
 - Tray icon **Exit**: quit.
 
-Settings also has a **theme** selector (`system` follows the Windows apps theme and accent colour) and a **Run at startup** toggle, which is turned on the first time the app runs.
+The Settings top bar shows the app version and has a **Dark** switch (the default follows the Windows apps theme and accent colour) and a **Run at startup** switch, which is turned on the first time the app runs.
+
+The hotkey is not editable in Settings; change the top-level `hotkey` key in `config.json` and restart.
 
 ## Configuration
 
-Stored at `%APPDATA%\AppLauncher\config.json` (edit via Settings or by hand):
+Stored at `%APPDATA%\AppLauncher\config.json` (edit entries via Settings, the rest by hand):
 
 ```json
 {
@@ -67,7 +69,8 @@ Stored at `%APPDATA%\AppLauncher\config.json` (edit via Settings or by hand):
 - `monitor`: 1-indexed; out-of-range falls back to the primary monitor.
 - `zone`: `maximized`, `left-half`, `right-half`, `top-half`, `bottom-half`, `top-left`, `top-right`, `bottom-left`, `bottom-right`, or `open-only` (launch without positioning).
 - `enabled`: defaults to `true`; disabled entries are skipped on launch.
-- `theme` (top level): `system`, `light`, or `dark`.
+- `hotkey` (top level): defaults to `ctrl+alt+l`.
+- `theme` (top level): `system`, `light`, or `dark`; the Settings Dark switch writes `dark` or `light`.
 
 A corrupt config is backed up as `config.json.bad` and replaced with an empty default, and Settings opens automatically.
 
@@ -77,15 +80,11 @@ A corrupt config is backed up as `config.json.bad` and replaced with an empty de
 python -m pytest tests/
 ```
 
-Pure-Python tests only (zone math, config I/O) — no Win32 mocking.
+Covers zone math, config I/O, launch and spawn behaviour, the update check, and the Settings window and tray (some tests mock Win32 and Tk calls).
 
 ## Releasing
 
-1. Bump `VERSION` in `version.py` on `develop` (the only place a version is typed).
-2. Merge `develop` into `master`.
-3. Tag the merge commit `v<VERSION>` (e.g. `v0.2.1`).
-
-The installer build (`installer\build.bat`) reads `VERSION` and passes it to Inno Setup.
+See [RELEASING.md](RELEASING.md) for the checklist and [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Layout
 
@@ -98,4 +97,6 @@ tray.py          tray icon/menu + global hotkey message loop
 settings_ui.py   CustomTkinter entry editor
 zone_preview.py  monitor/zone preview map drawn on the entry tiles
 app_index.py     installed-app lookup for the entry picker
+updates.py       daily GitHub release check behind the tray update item
+version.py       VERSION, the only place the version number is typed
 ```
