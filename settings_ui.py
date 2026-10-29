@@ -155,7 +155,9 @@ def _letter_tile(name: str | None, size: int) -> Image.Image:
     letter = (name_str.strip()[:1] or "?").upper()
     draw = ImageDraw.Draw(img)
     try:
-        font = ImageFont.truetype("segoeui.ttf", size // 2)
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont = ImageFont.truetype(
+            "segoeui.ttf", size // 2
+        )
     except OSError:
         font = ImageFont.load_default()
     bbox = draw.textbbox((0, 0), letter, font=font)
@@ -188,7 +190,7 @@ def _icon_image(entry: dict, dimmed: bool = False) -> ctk.CTkImage:
         pil = _extract_exe_icon(src)
         if pil is None:
             pil = _letter_tile(name, _ICON_SIZE)
-        pil = pil.resize((_ICON_SIZE, _ICON_SIZE), Image.LANCZOS)
+        pil = pil.resize((_ICON_SIZE, _ICON_SIZE), Image.Resampling.LANCZOS)
         _pil_cache[base_key] = pil
     if dimmed:
         alpha = pil.getchannel("A")
@@ -278,7 +280,8 @@ def open_settings() -> None:
     if _ui_thread and _ui_thread.is_alive():
         try:
             # event_generate(when="tail") is the thread-safe way to poke Tk
-            _root.event_generate("<<Lift>>", when="tail")
+            if _root is not None:
+                _root.event_generate("<<Lift>>", when="tail")
         except Exception:
             pass
         return

@@ -92,7 +92,7 @@ def hotkey_thread(icon) -> None:
     # ponytail: no UnregisterHotKey on exit — daemon thread dies with the
     # process and the OS releases the registration
     while True:
-        rc, msg = win32gui.GetMessage(None, 0, 0)
+        rc, msg = win32gui.GetMessage(None, 0, 0)  # type: ignore[arg-type]  # stub rejects None hwnd
         if rc == 0:  # WM_QUIT
             break
         if msg[1] == win32con.WM_HOTKEY:

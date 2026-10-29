@@ -23,16 +23,16 @@ ZONES = [
 
 
 def load() -> dict:
-    load.was_reset = False
+    setattr(load, "was_reset", False)
     try:
         with open(CONFIG_PATH, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        load.was_reset = True
+        setattr(load, "was_reset", True)
     except ValueError:  # JSONDecodeError and UnicodeDecodeError are both ValueError
         # keep the bad file recoverable, then start fresh
         CONFIG_PATH.replace(CONFIG_PATH.with_name(CONFIG_PATH.name + ".bad"))
-        load.was_reset = True
+        setattr(load, "was_reset", True)
     return {"hotkey": DEFAULT_HOTKEY, "entries": []}
 
 

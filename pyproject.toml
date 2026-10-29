@@ -7,3 +7,9 @@ select = ["E", "F", "I"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.mypy]
+
+[[tool.mypy.overrides]]
+module = ["customtkinter", "pystray"]
+ignore_missing_imports = true

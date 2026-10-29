@@ -12,7 +12,7 @@ def main() -> None:
     import win32event
     import winerror
 
-    mutex = win32event.CreateMutex(None, False, "Global\\AppLauncherSingleton")
+    _mutex = win32event.CreateMutex(None, False, "Global\\AppLauncherSingleton")  # type: ignore[arg-type]  # stub rejects None security attrs
     if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
         MB_ICONINFORMATION = 0x40
         ctypes.windll.user32.MessageBoxW(

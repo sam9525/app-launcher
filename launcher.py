@@ -172,7 +172,7 @@ def _process_basename(pid: int, pid_names: dict) -> str | None:
             try:
                 path = win32process.GetModuleFileNameEx(handle, 0)
             finally:
-                handle.close()
+                handle.close()  # type: ignore[attr-defined]  # stub types handle as int
             pid_names[pid] = os.path.basename(path).lower()
         except Exception:  # elevated processes refuse OpenProcess — skip them
             pid_names[pid] = None

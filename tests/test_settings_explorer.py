@@ -1,6 +1,7 @@
 import pathlib
 import sys
 import unittest.mock as mock
+
 import customtkinter as ctk
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
@@ -58,10 +59,16 @@ def test_settings_explorer_flow():
                             find_bound(child)
 
                     find_bound(self)
-                    print(f"DEBUG: Found bound widgets in scrollable frame: {bound_widgets}")
-                    assert len(bound_widgets) > 0, "No bound widgets found for explorer tile"
+                    print(
+                        f"DEBUG: Found bound widgets in scrollable frame: "
+                        f"{bound_widgets}"
+                    )
+                    assert (
+                        len(bound_widgets) > 0
+                    ), "No bound widgets found for explorer tile"
 
-                    # Locate widgets we need: kind_seg, name_entry, folders_box, save_btn
+                    # Locate widgets we need: kind_seg, name_entry, folders_box,
+                    # save_btn
                     kind_seg = None
                     name_var = None
                     folders_box = None
@@ -124,8 +131,12 @@ def test_settings_explorer_flow():
 
                     # 3b. Test validation warning when multiple folders do not exist
                     folders_box.delete("1.0", "end")
-                    folders_box.insert("1.0", "C:\\InvalidPathXYZ1\nC:\\InvalidPathXYZ2")
-                    with mock.patch("settings_ui.messagebox.askyesno", return_value=False) as mock_ask:
+                    folders_box.insert(
+                        "1.0", "C:\\InvalidPathXYZ1\nC:\\InvalidPathXYZ2"
+                    )
+                    with mock.patch(
+                        "settings_ui.messagebox.askyesno", return_value=False
+                    ) as mock_ask:
                         save_btn.invoke()
                         assert mock_ask.called
                         msg = mock_ask.call_args[0][1]
@@ -138,7 +149,9 @@ def test_settings_explorer_flow():
                     # 4. Test modifying and saving
                     folders_box.delete("1.0", "end")
                     folders_box.insert("1.0", "C:\\Program Files\nD:\\projects")
-                    with mock.patch("settings_ui.messagebox.askyesno", return_value=True):
+                    with mock.patch(
+                        "settings_ui.messagebox.askyesno", return_value=True
+                    ):
                         save_btn.invoke()
                     wait_for_animation()  # wait for save and slide-close animation
 
@@ -171,6 +184,7 @@ def test_settings_explorer_flow():
 
                     # Find bound widgets of the plus tile
                     plus_bound = []
+
                     def find_plus_bound(widget):
                         try:
                             binds = widget.bind("<Button-1>")
@@ -203,7 +217,9 @@ def test_settings_explorer_flow():
                     folders_box.delete("1.0", "end")
                     folders_box.insert("1.0", "C:\\NewFolder")
 
-                    with mock.patch("settings_ui.messagebox.askyesno", return_value=True):
+                    with mock.patch(
+                        "settings_ui.messagebox.askyesno", return_value=True
+                    ):
                         save_btn.invoke()
                     wait_for_animation()
 

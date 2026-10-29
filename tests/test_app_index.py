@@ -107,7 +107,8 @@ def test_resolve_vscode_start_menu(
     mock_coinit.assert_called_once()
     mock_dispatch.assert_called_once_with("WScript.Shell")
     mock_shell.CreateShortcut.assert_called_once_with(
-        "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Visual Studio Code.lnk"
+        "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs"
+        "\\Visual Studio Code.lnk"
     )
 
 
