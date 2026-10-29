@@ -12,7 +12,7 @@ def test_releasing_is_version_free():
     text = (ROOT / "RELEASING.md").read_text(encoding="utf-8")
     assert "X.Y.Z" in text
     assert "--no-ff" in text and "git tag -a" in text
-    assert re.search(r"\b0\.\d+\.\d+\b", text) is None
+    assert re.search(r"(?<![\w.])v?\d+\.\d+\.\d+", text) is None
 
 
 def test_readme_points_to_releasing():

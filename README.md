@@ -26,7 +26,7 @@ The hotkey is not editable in Settings; change the top-level `hotkey` key in `co
 
 ## Configuration
 
-Stored at `%APPDATA%\AppLauncher\config.json` (edit entries via Settings, the rest by hand):
+Stored at `%APPDATA%\AppLauncher\config.json` (edit entries and theme via Settings, the rest by hand):
 
 ```json
 {
