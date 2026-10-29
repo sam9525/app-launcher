@@ -84,7 +84,12 @@ Covers zone math, config I/O, launch and spawn behaviour, the update check, and 
 
 ## Releasing
 
-See [RELEASING.md](RELEASING.md) for the checklist and [CHANGELOG.md](CHANGELOG.md) for release notes.
+1. Add a `## vX.Y.Z` section to [CHANGELOG.md](CHANGELOG.md) (a test requires one for the current version).
+2. Bump `VERSION` in `version.py` on `develop` (the only place a version is typed).
+3. Merge `develop` into `master` with `--no-ff`.
+4. Tag the merge commit `vX.Y.Z` (annotated).
+
+The installer build (`installer\build.bat`) reads `VERSION` and passes it to Inno Setup.
 
 ## Layout
 
