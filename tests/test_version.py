@@ -27,8 +27,17 @@ def test_build_bat_passes_version():
     assert "/DAppVersion=" in bat and "version" in bat.lower()
 
 
+def test_build_bat_clears_tcl_tk_before_pyinstaller():
+    bat = (ROOT / "installer" / "build.bat").read_text(encoding="utf-8")
+    lines = [line.strip().lower() for line in bat.splitlines()]
+    pyi = next(i for i, line in enumerate(lines) if line.startswith("pyinstaller"))
+    for var in ("tcl_library", "tk_library"):
+        assert f"set {var}=" in lines[:pyi], var
+
+
 if __name__ == "__main__":
     test_version_is_dotted_ints()
     test_iss_has_no_hardcoded_version()
     test_build_bat_passes_version()
+    test_build_bat_clears_tcl_tk_before_pyinstaller()
     print("test_version OK")

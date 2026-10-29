@@ -8,6 +8,10 @@ if "%VER%"=="" (
     echo Could not read VERSION from version.py
     exit /b 1
 )
+
+REM A terminal opened by an older App Launcher carries _MEI Tcl/Tk paths; those make PyInstaller drop tkinter.
+set TCL_LIBRARY=
+set TK_LIBRARY=
 pyinstaller --noconfirm --onefile --windowed --name AppLauncher --icon assets\app-launcher-icon.ico --add-data "assets\app-launcher-icon.ico;assets" --collect-all customtkinter main.py
 if errorlevel 1 exit /b 1
 
