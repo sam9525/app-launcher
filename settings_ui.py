@@ -23,6 +23,7 @@ import config
 import launcher
 import monitors
 import tray
+import version
 import zone_preview
 
 _ui_thread: threading.Thread | None = None
@@ -320,7 +321,7 @@ def _run() -> None:
 
     top = ctk.CTkFrame(root, fg_color="transparent")
     top.pack(fill="x", padx=10, pady=(8, 4))
-    ctk.CTkLabel(top, text="App Launcher", font=("Segoe UI", 14, "bold")).pack(
+    ctk.CTkLabel(top, text=f"v{version.VERSION}", font=("Segoe UI", 14, "bold")).pack(
         side="left"
     )
     ctk.CTkButton(top, text="Launch Now", width=100, command=launch_now).pack(
