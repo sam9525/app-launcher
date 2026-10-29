@@ -1,7 +1,10 @@
+#ifndef AppVersion
+#error AppVersion not set - build with installer\build.bat
+#endif
 ; Inno Setup script -> AppLauncher-Setup.exe (per-user, no admin required).
 [Setup]
 AppName=App Launcher
-AppVersion=1.0.0
+AppVersion={#AppVersion}
 DefaultDirName={autopf}\App Launcher
 DefaultGroupName=App Launcher
 UninstallDisplayName=App Launcher

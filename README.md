@@ -78,6 +78,14 @@ python -m pytest tests/
 
 Pure-Python tests only (zone math, config I/O) — no Win32 mocking.
 
+## Releasing
+
+1. Bump `VERSION` in `version.py` on `develop` (the only place a version is typed).
+2. Merge `develop` into `master`.
+3. Tag the merge commit `v<VERSION>` (e.g. `v0.2.1`).
+
+The installer build (`installer\build.bat`) reads `VERSION` and passes it to Inno Setup.
+
 ## Layout
 
 ```
