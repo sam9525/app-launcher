@@ -29,7 +29,7 @@ def _from_app_paths(target: str) -> str | None:
                 if target in (sub.lower(), stem):
                     try:
                         with winreg.OpenKey(key, sub) as sk:
-                            path, _ = winreg.QueryValueEx(sk, None)  # default value
+                            path, _ = winreg.QueryValueEx(sk, "")  # default value
                     except OSError:
                         continue
                     if path:

@@ -1,5 +1,10 @@
 """Pure-logic checks for the explorer kind. No Win32 side effects here."""
 
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
 import launcher
 
 

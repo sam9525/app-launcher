@@ -7,9 +7,9 @@ MONITORINFOF_PRIMARY = 1
 
 def get_monitors() -> list[tuple[int, int, int, int]]:
     """Work-area rects (taskbar excluded) as (x, y, w, h), primary monitor first."""
-    mons = []
+    mons: list[tuple[int, int, int, int]] = []
     for hmon, _hdc, _rect in win32api.EnumDisplayMonitors():
-        info = win32api.GetMonitorInfo(hmon)
+        info = win32api.GetMonitorInfo(hmon)  # type: ignore[arg-type]  # stub expects int
         left, top, right, bottom = info["Work"]
         entry = (left, top, right - left, bottom - top)
         if info["Flags"] & MONITORINFOF_PRIMARY:

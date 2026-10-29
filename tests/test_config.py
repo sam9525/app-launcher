@@ -143,11 +143,11 @@ def test_send_startup_command_com_init_uninit():
     hwnd = 12345
     with (
         mock.patch("win32gui.GetForegroundWindow", return_value=hwnd),
-        mock.patch("win32gui.SetForegroundWindow") as mock_set_foreground,
+        mock.patch("win32gui.SetForegroundWindow"),
         mock.patch("pythoncom.CoInitialize") as mock_co_init,
         mock.patch("pythoncom.CoUninitialize") as mock_co_uninit,
         mock.patch("win32com.client.Dispatch") as mock_dispatch,
-        mock.patch("time.sleep") as mock_sleep,
+        mock.patch("time.sleep"),
     ):
         import launcher
 

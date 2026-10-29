@@ -2,6 +2,7 @@ import pathlib
 import sys
 import time
 import unittest.mock as mock
+
 import customtkinter as ctk
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
@@ -56,7 +57,8 @@ def test_open_one_respects_run_lock():
                         launcher._run_lock.release()
 
                     with mock.patch("launcher._handle_entry") as mock_handle:
-                        # Case 1: Lock is free. on_open_fn should acquire it, run _handle_entry, then release it.
+                        # Case 1: Lock is free. on_open_fn should acquire it, run
+                        # _handle_entry, then release it.
                         on_open_fn()
 
                         # Wait a bit for the thread to run
@@ -81,7 +83,8 @@ def test_open_one_respects_run_lock():
                         # Reset mock
                         mock_handle.reset_mock()
 
-                        # Case 2: Lock is already acquired by something else. on_open_fn should return immediately.
+                        # Case 2: Lock is already acquired by something else. on_open_fn
+                        # should return immediately.
                         launcher._run_lock.acquire()
                         try:
                             on_open_fn()

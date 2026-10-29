@@ -4,16 +4,19 @@ import ctypes
 import os
 import shlex
 import subprocess
+import sys
 import threading
 import time
 from ctypes import wintypes
 
 import pythoncom
+import pywintypes
 import win32api
 import win32com.client
 import win32con
 import win32gui
 import win32process
+from win32com.shell import shell
 
 import config
 import monitors
@@ -34,6 +37,42 @@ EXPLORER_TAB_OPEN_DELAY = 1.0  # after Ctrl+T: let the new tab become input-read
 EXPLORER_FOCUS_DELAY = 0.4  # after Ctrl+L: let the address bar take focus
 EXPLORER_NAV_DELAY = 0.6  # after Enter: let the folder load before the next tab
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000  # works on elevated processes too
+TOKEN_QUERY = 0x0008
+TOKEN_ELEVATION_CLASS = 20  # TOKEN_INFORMATION_CLASS.TokenElevation
+_MAX_PATH_CHARS = 32768
+ERROR_ELEVATION_REQUIRED = 740
+ERROR_CANCELLED = 1223  # user declined the UAC prompt
+SEE_MASK_NOASYNC = 0x00000100  # absent from pywin32 shellcon
+
+# Private DLL handles: argtypes (64-bit HANDLEs) must not leak into ctypes.windll.
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+_kernel32.OpenProcess.restype = wintypes.HANDLE
+_kernel32.QueryFullProcessImageNameW.argtypes = [
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    wintypes.LPWSTR,
+    ctypes.POINTER(wintypes.DWORD),
+]
+_kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+_kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+_kernel32.CloseHandle.restype = wintypes.BOOL
+_advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+_advapi32.OpenProcessToken.argtypes = [
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    ctypes.POINTER(wintypes.HANDLE),
+]
+_advapi32.OpenProcessToken.restype = wintypes.BOOL
+_advapi32.GetTokenInformation.argtypes = [
+    wintypes.HANDLE,
+    ctypes.c_int,
+    wintypes.LPVOID,
+    wintypes.DWORD,
+    ctypes.POINTER(wintypes.DWORD),
+]
+_advapi32.GetTokenInformation.restype = wintypes.BOOL
 
 # ponytail: global lock; fine for a single user mashing one hotkey
 _run_lock = threading.Lock()
@@ -46,6 +85,12 @@ _launched_terminals: set = set()
 # Explorer groups launched once per run, keyed (name, tuple(folders)).
 # ponytail: in-memory set, no persistence — a fresh run reopens windows
 _launched_explorers: set = set()
+
+# Admin apps launched once per run, keyed (name, path). Their windows are never
+# positioned (the launcher can't move an elevated window), so a second press
+# must not raise another UAC prompt.
+# ponytail: in-memory set, no persistence — a fresh run asks for approval again
+_launched_admin: set = set()
 
 
 def _terminal_key(entry: dict) -> tuple:
@@ -143,40 +188,125 @@ def _handle_entry(entry: dict, pid_names: dict) -> str | None:
     proc_name = entry["match_process"]
     hwnd = _find_window(proc_name, pid_names)
     if hwnd:
-        _position(hwnd, monitor, zone)
+        if not _window_is_elevated(hwnd):
+            _position(hwnd, monitor, zone)
+        return None
+    admin_key = (entry.get("name"), entry.get("path"))
+    if admin_key in _launched_admin:
         return None
     before = set(_windows_for(proc_name, pid_names))
-    _spawn(entry)
+    try:
+        elevated = _spawn(entry)
+    except pywintypes.error as exc:
+        if exc.winerror == ERROR_CANCELLED:
+            return "admin approval declined"
+        raise
+    if elevated:
+        _launched_admin.add(admin_key)
+        return None
     hwnd = _poll_new_window(proc_name, before, pid_names)
     if hwnd is None:
         return "unpositioned (no window within 15 s)"
-    _position(hwnd, monitor, zone)
+    if not _window_is_elevated(hwnd):
+        _position(hwnd, monitor, zone)
     return None
 
 
-def _spawn(entry: dict) -> None:
+def _child_env() -> dict[str, str]:
+    """os.environ minus the Tcl/Tk paths PyInstaller points into its _MEI folder,
+    which is deleted on exit and breaks Tk in anything launched from here."""
+    env = dict(os.environ)
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle:
+        for name in ("TCL_LIBRARY", "TK_LIBRARY"):
+            if env.get(name, "").lower().startswith(bundle.lower()):
+                del env[name]
+    return env
+
+
+def _spawn(entry: dict) -> bool:
+    """Starts the entry. True only if it had to be launched elevated via UAC."""
+    env = _child_env()
     if entry.get("kind") == "terminal":
-        subprocess.Popen(["wt.exe", "-d", entry["workdir"]])
+        subprocess.Popen(["wt.exe", "-d", entry["workdir"]], env=env)
     elif entry.get("kind") == "explorer":
-        subprocess.Popen(["explorer.exe", entry["folders"][0]])
+        subprocess.Popen(["explorer.exe", entry["folders"][0]], env=env)
     else:
-        subprocess.Popen([entry["path"]] + shlex.split(entry.get("args", "")))
+        try:
+            subprocess.Popen(
+                [entry["path"]] + shlex.split(entry.get("args", "")), env=env
+            )
+        except OSError as exc:
+            if exc.winerror != ERROR_ELEVATION_REQUIRED:
+                raise
+            pythoncom.CoInitialize()  # launch_all runs on worker threads
+            try:
+                shell.ShellExecuteEx(
+                    fMask=SEE_MASK_NOASYNC,
+                    lpVerb="runas",
+                    lpFile=entry["path"],
+                    lpParameters=subprocess.list2cmdline(
+                        shlex.split(entry.get("args", ""))
+                    ),
+                    nShow=win32con.SW_SHOWNORMAL,
+                )
+            finally:
+                pythoncom.CoUninitialize()
+            return True
+    return False
 
 
 def _process_basename(pid: int, pid_names: dict) -> str | None:
     if pid not in pid_names:
-        try:
-            handle = win32api.OpenProcess(
-                win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-            )
+        pid_names[pid] = None  # stays None if the process can't be queried
+        handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
             try:
-                path = win32process.GetModuleFileNameEx(handle, 0)
+                buf = ctypes.create_unicode_buffer(_MAX_PATH_CHARS)
+                size = wintypes.DWORD(len(buf))
+                if _kernel32.QueryFullProcessImageNameW(
+                    handle, 0, buf, ctypes.byref(size)
+                ):
+                    pid_names[pid] = os.path.basename(buf.value).lower()
             finally:
-                handle.close()
-            pid_names[pid] = os.path.basename(path).lower()
-        except Exception:  # elevated processes refuse OpenProcess — skip them
-            pid_names[pid] = None
+                _kernel32.CloseHandle(handle)
     return pid_names[pid]
+
+
+def _is_elevated(pid: int) -> bool:
+    """True if the process runs elevated. Fails safe: any error counts as elevated."""
+    process = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not process:
+        return True
+    try:
+        token = wintypes.HANDLE()
+        if not _advapi32.OpenProcessToken(process, TOKEN_QUERY, ctypes.byref(token)):
+            return True
+        try:
+            elevation = wintypes.DWORD()
+            returned = wintypes.DWORD()
+            if not _advapi32.GetTokenInformation(
+                token,
+                TOKEN_ELEVATION_CLASS,
+                ctypes.byref(elevation),
+                ctypes.sizeof(elevation),
+                ctypes.byref(returned),
+            ):
+                return True
+            return bool(elevation.value)
+        finally:
+            _kernel32.CloseHandle(token)
+    finally:
+        _kernel32.CloseHandle(process)
+
+
+def _window_is_elevated(hwnd: int) -> bool:
+    """True if the window's process is elevated; errors count as elevated."""
+    try:
+        _tid, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return _is_elevated(pid)
+    except Exception:
+        return True
 
 
 def _windows_for(process_name: str, pid_names: dict) -> list[int]:
@@ -297,8 +427,8 @@ def _send_startup_command(hwnd: int, command: str) -> bool:
         return False  # never type into the wrong window
     pythoncom.CoInitialize()  # launch_all runs on worker threads
     try:
-        shell = win32com.client.Dispatch("WScript.Shell")
-        shell.SendKeys(_sendkeys_escape(command) + "{ENTER}")
+        wsh = win32com.client.Dispatch("WScript.Shell")
+        wsh.SendKeys(_sendkeys_escape(command) + "{ENTER}")
         return True
     finally:
         pythoncom.CoUninitialize()
