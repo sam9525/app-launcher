@@ -223,15 +223,19 @@ def _spawn(entry: dict) -> bool:
         except OSError as exc:
             if exc.winerror != ERROR_ELEVATION_REQUIRED:
                 raise
-            shell.ShellExecuteEx(
-                fMask=SEE_MASK_NOASYNC,
-                lpVerb="runas",
-                lpFile=entry["path"],
-                lpParameters=subprocess.list2cmdline(
-                    shlex.split(entry.get("args", ""))
-                ),
-                nShow=win32con.SW_SHOWNORMAL,
-            )
+            pythoncom.CoInitialize()  # launch_all runs on worker threads
+            try:
+                shell.ShellExecuteEx(
+                    fMask=SEE_MASK_NOASYNC,
+                    lpVerb="runas",
+                    lpFile=entry["path"],
+                    lpParameters=subprocess.list2cmdline(
+                        shlex.split(entry.get("args", ""))
+                    ),
+                    nShow=win32con.SW_SHOWNORMAL,
+                )
+            finally:
+                pythoncom.CoUninitialize()
             return True
     return False
 
@@ -407,8 +411,8 @@ def _send_startup_command(hwnd: int, command: str) -> bool:
         return False  # never type into the wrong window
     pythoncom.CoInitialize()  # launch_all runs on worker threads
     try:
-        shell = win32com.client.Dispatch("WScript.Shell")
-        shell.SendKeys(_sendkeys_escape(command) + "{ENTER}")
+        wsh = win32com.client.Dispatch("WScript.Shell")
+        wsh.SendKeys(_sendkeys_escape(command) + "{ENTER}")
         return True
     finally:
         pythoncom.CoUninitialize()
