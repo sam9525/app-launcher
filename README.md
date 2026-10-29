@@ -60,7 +60,7 @@ Stored at `%APPDATA%\AppLauncher\config.json` (edit via Settings or by hand):
 ```
 
 - `kind`:
-  - `"app"` — launched from `path`, matched by `match_process`.
+  - `"app"` — launched from `path`, matched by `match_process`. Apps that need admin rights open through a UAC prompt, are not placed in a zone, and launch at most once per launcher run; cancelling shows `admin approval declined`.
   - `"terminal"` — spawned via `wt.exe -d workdir`; optional `startup_command` is typed into the new terminal.
   - `"explorer"` — first folder in `folders` opens a window, the rest become tabs in it (capped at 6 folders; extras are reported as a note).
 - `monitor`: 1-indexed; out-of-range falls back to the primary monitor.
