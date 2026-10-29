@@ -8,6 +8,14 @@ select = ["E", "F", "I"]
 [tool.ruff.format]
 quote-style = "double"
 
+[tool.pytest.ini_options]
+# Tcl caches the process std handles as its stdin/stdout/stderr channels. pytest's
+# default fd capture dup2()s fds 0-2 around every test, closing those handles, and
+# Windows hands the freed values to the next file Tcl opens (init.tcl, tk.tcl).
+# Tcl then mistakes that file for the stale std channel and Tk() fails at random.
+# sys capture leaves the OS-level std handles alone.
+addopts = "--capture=sys"
+
 [tool.mypy]
 
 [[tool.mypy.overrides]]
